@@ -1,12 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/page-header";
 import {
   TrendingUp, Users, AlertTriangle, BarChart3,
   ArrowUpRight, ArrowDownRight, CheckCircle2, Clock,
-  Brain, GitBranch, ChevronRight, RefreshCw,
+  Brain, GitBranch, ChevronRight, RefreshCw, Sparkles, Loader2,
 } from "lucide-react";
 import type { Task, Decision, Memory, Project, Notification } from "@/types";
 import Link from "next/link";
@@ -43,7 +44,20 @@ function StatCard({ icon: Icon, label, value, trend, trendUp, color }: {
   );
 }
 
+interface DailyBriefing {
+  id: string;
+  log_date: string;
+  summary: string | null;
+  tasks_json: Record<string, unknown> | null;
+  risks_json: Record<string, unknown> | null;
+  decisions_json: Record<string, unknown> | null;
+  confirmed_by_user: boolean;
+  created_at: string;
+}
+
 export default function DailyPage() {
+  const queryClient = useQueryClient();
+
   const { data: tasks = [] } = useQuery({
     queryKey: ["tasks-all"],
     queryFn: () => api.get<Task[]>("/api/tasks"),
@@ -69,6 +83,19 @@ export default function DailyPage() {
     queryFn: () => api.get<Notification[]>("/api/notifications?unread_only=true"),
   });
 
+  const { data: todayBriefing } = useQuery({
+    queryKey: ["daily-log-today"],
+    queryFn: () => api.get<DailyBriefing | null>("/api/daily-logs/today"),
+  });
+
+  const generateBriefing = useMutation({
+    mutationFn: () => api.post<{ summary: string }>("/api/daily-logs/generate"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["daily-log-today"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
+
   const activeTasks = tasks.filter(t => t.status === "in_progress");
   const pendingDecisions = decisions.filter(d => d.decision_status === "proposed");
   const confirmedMemories = memories.filter(m => m.status === "confirmed");
@@ -88,7 +115,17 @@ export default function DailyPage() {
             {dateStr} · 以下是你的经营概览
           </p>
         </div>
-        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors">
+        <button
+          onClick={() => {
+            queryClient.invalidateQueries({ queryKey: ["tasks-all"] });
+            queryClient.invalidateQueries({ queryKey: ["decisions"] });
+            queryClient.invalidateQueries({ queryKey: ["projects"] });
+            queryClient.invalidateQueries({ queryKey: ["memories"] });
+            queryClient.invalidateQueries({ queryKey: ["notifications"] });
+            queryClient.invalidateQueries({ queryKey: ["daily-log-today"] });
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors"
+        >
           <RefreshCw className="h-3.5 w-3.5" />
           更新数据
         </button>
@@ -121,30 +158,56 @@ export default function DailyPage() {
 
           {/* AI Summary Card */}
           <div className="p-5 rounded-xl bg-brand-900 text-white dark:bg-brand-950">
-            <div className="flex items-center gap-2 mb-3">
-              <Brain className="h-5 w-5 text-brand-300" />
-              <span className="text-sm font-semibold text-brand-200">CEO Agent 核心结论</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Brain className="h-5 w-5 text-brand-300" />
+                <span className="text-sm font-semibold text-brand-200">CEO Agent 经营简报</span>
+              </div>
+              <button
+                onClick={() => generateBriefing.mutate()}
+                disabled={generateBriefing.isPending}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-brand-700 hover:bg-brand-600 text-xs text-brand-200 hover:text-white transition-colors disabled:opacity-50"
+              >
+                {generateBriefing.isPending ? (
+                  <><Loader2 className="h-3 w-3 animate-spin" /> 生成中...</>
+                ) : (
+                  <><Sparkles className="h-3 w-3" /> {todayBriefing?.summary ? "重新生成" : "生成简报"}</>
+                )}
+              </button>
             </div>
-            <p className="text-sm leading-relaxed text-brand-100">
-              {activeTasks.length > 0
-                ? `当前有 ${activeTasks.length} 个任务进行中，${activeProjects.length} 个活跃项目。`
-                : "暂无进行中的任务。"}
-              {pendingDecisions.length > 0
-                ? ` ${pendingDecisions.length} 个决策待你审批。`
-                : ""}
-              {atRiskTasks.length > 0
-                ? ` 注意：${atRiskTasks.length} 个事项存在风险，建议优先处理。`
-                : " 整体经营状态良好，无高风险事项。"}
-              {notifications.length > 0
-                ? ` 另有 ${notifications.length} 条未读通知。`
-                : ""}
-            </p>
-            <Link
-              href="/chat"
-              className="inline-flex items-center gap-1 mt-3 text-xs text-brand-300 hover:text-white transition-colors"
-            >
-              与 CEO Agent 对话 <ChevronRight className="h-3 w-3" />
-            </Link>
+            {todayBriefing?.summary ? (
+              <div className="text-sm leading-relaxed text-brand-100 whitespace-pre-line">
+                {todayBriefing.summary}
+              </div>
+            ) : (
+              <p className="text-sm leading-relaxed text-brand-100">
+                {activeTasks.length > 0
+                  ? `当前有 ${activeTasks.length} 个任务进行中，${activeProjects.length} 个活跃项目。`
+                  : "暂无进行中的任务。"}
+                {pendingDecisions.length > 0
+                  ? ` ${pendingDecisions.length} 个决策待你审批。`
+                  : ""}
+                {atRiskTasks.length > 0
+                  ? ` 注意：${atRiskTasks.length} 个事项存在风险，建议优先处理。`
+                  : " 整体经营状态良好，无高风险事项。"}
+                {notifications.length > 0
+                  ? ` 另有 ${notifications.length} 条未读通知。`
+                  : ""}
+              </p>
+            )}
+            <div className="flex items-center gap-3 mt-3">
+              <Link
+                href="/chat"
+                className="inline-flex items-center gap-1 text-xs text-brand-300 hover:text-white transition-colors"
+              >
+                与 CEO Agent 对话 <ChevronRight className="h-3 w-3" />
+              </Link>
+              {todayBriefing?.created_at && (
+                <span className="text-[10px] text-brand-400">
+                  生成于 {new Date(todayBriefing.created_at).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Pending Decisions */}

@@ -118,13 +118,17 @@ async def send_message(
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
+    content_json = req.content_json or {}
+    if req.image_urls:
+        content_json["image_urls"] = req.image_urls
+
     user_msg = Message(
         conversation_id=conversation_id,
         sender_type="user",
         sender_id=current_user.id,
         content_text=req.content_text,
-        content_json=req.content_json,
-        message_type=req.message_type,
+        content_json=content_json if content_json else None,
+        message_type="image" if req.image_urls else req.message_type,
     )
     db.add(user_msg)
     conv.last_message_at = datetime.now(timezone.utc)

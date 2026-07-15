@@ -2,9 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, streamChat } from "@/lib/api";
+import { api, streamChat, uploadImage } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Send, Plus, Loader2, Bot, User, Sparkles, Brain, GitBranch, AlertTriangle, RefreshCw, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { Send, Plus, Loader2, Bot, User, Sparkles, Brain, GitBranch, AlertTriangle, RefreshCw, Mic, MicOff, Volume2, VolumeX, ImagePlus, X } from "lucide-react";
 import type { Conversation, Message, StreamEvent, AgentInfo, Memory, Decision } from "@/types";
 import ReactMarkdown from "react-markdown";
 
@@ -119,8 +119,11 @@ export default function ChatPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [autoSpeak, setAutoSpeak] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [pendingImages, setPendingImages] = useState<{ file: File; preview: string }[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastCompletedRef = useRef<string>("");
 
   const { isListening, transcript, supported: speechSupported, startListening, stopListening } = useSpeechRecognition();
@@ -192,8 +195,26 @@ export default function ChatPage() {
     },
   });
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newImages = Array.from(files).slice(0, 4 - pendingImages.length).map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setPendingImages((prev) => [...prev, ...newImages].slice(0, 4));
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeImage = (index: number) => {
+    setPendingImages((prev) => {
+      URL.revokeObjectURL(prev[index].preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
   const sendMessage = async () => {
-    if (!input.trim() || isStreaming) return;
+    if ((!input.trim() && pendingImages.length === 0) || isStreaming) return;
 
     if (isListening) stopListening();
 
@@ -203,8 +224,10 @@ export default function ChatPage() {
       convId = conv.id;
     }
 
-    const userMessage = input.trim();
+    const userMessage = input.trim() || "请看这些图片";
+    const imagesToSend = [...pendingImages];
     setInput("");
+    setPendingImages([]);
     setIsStreaming(true);
     setStreamingText("");
     setProposedTasks([]);
@@ -218,8 +241,8 @@ export default function ChatPage() {
         sender_type: "user" as const,
         sender_id: null,
         content_text: userMessage,
-        content_json: null,
-        message_type: "text",
+        content_json: imagesToSend.length > 0 ? { image_previews: imagesToSend.map((i) => i.preview) } : null,
+        message_type: imagesToSend.length > 0 ? "image" : "text",
         model_provider: null,
         model_name: null,
         prompt_tokens: null,
@@ -229,8 +252,24 @@ export default function ChatPage() {
       },
     ]);
 
+    let imageUrls: string[] = [];
+    if (imagesToSend.length > 0) {
+      setIsUploading(true);
+      try {
+        const results = await Promise.all(imagesToSend.map((img) => uploadImage(img.file)));
+        imageUrls = results.map((r) => r.url);
+      } catch (err: any) {
+        setStreamingText(`⚠️ 图片上传失败: ${err.message}`);
+        setIsUploading(false);
+        setIsStreaming(false);
+        return;
+      }
+      setIsUploading(false);
+      imagesToSend.forEach((img) => URL.revokeObjectURL(img.preview));
+    }
+
     try {
-      for await (const event of streamChat(convId!, userMessage)) {
+      for await (const event of streamChat(convId!, userMessage, imageUrls.length > 0 ? imageUrls : undefined)) {
         const e = event as StreamEvent;
         switch (e.type) {
           case "text_delta":
@@ -398,6 +437,20 @@ export default function ChatPage() {
                   </div>
                 )}
                 <div className="flex flex-col gap-1">
+                  {msg.content_json?.image_previews && (
+                    <div className="flex gap-2 mb-1 justify-end">
+                      {(msg.content_json.image_previews as string[]).map((src, i) => (
+                        <img key={i} src={src} alt="" className="h-20 w-20 rounded-lg object-cover border" />
+                      ))}
+                    </div>
+                  )}
+                  {msg.content_json?.image_urls && (
+                    <div className="flex gap-2 mb-1 justify-end">
+                      {(msg.content_json.image_urls as string[]).map((src, i) => (
+                        <img key={i} src={src} alt="" className="h-20 w-20 rounded-lg object-cover border" />
+                      ))}
+                    </div>
+                  )}
                   <div
                     className={cn(
                       "max-w-[75%] rounded-2xl px-4 py-2.5 text-sm",
@@ -540,7 +593,52 @@ export default function ChatPage() {
               )}
             </div>
           )}
+
+          {/* Image previews */}
+          {pendingImages.length > 0 && (
+            <div className="flex gap-2 mb-2 max-w-3xl mx-auto">
+              {pendingImages.map((img, i) => (
+                <div key={i} className="relative group">
+                  <img
+                    src={img.preview}
+                    alt=""
+                    className="h-16 w-16 rounded-lg object-cover border"
+                  />
+                  <button
+                    onClick={() => removeImage(i)}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+              {isUploading && (
+                <div className="h-16 w-16 rounded-lg border flex items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-brand-600" />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
+            {/* Image upload */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              className="hidden"
+              onChange={handleImageSelect}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={pendingImages.length >= 4 || isStreaming}
+              className="p-2.5 rounded-xl bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:bg-brand-100 hover:text-brand-700 disabled:opacity-50 transition-colors shrink-0"
+              title="上传产品图片（最多4张）"
+            >
+              <ImagePlus className="h-5 w-5" />
+            </button>
+
             {speechSupported && (
               <button
                 onClick={isListening ? stopListening : startListening}
@@ -561,7 +659,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isListening ? "正在听你说话..." : "向 CEO Agent 询问经营问题..."}
+                placeholder={isListening ? "正在听你说话..." : pendingImages.length > 0 ? "描述这些图片，或直接发送..." : "向 CEO Agent 询问经营问题..."}
                 rows={1}
                 className="w-full resize-none rounded-xl border bg-transparent px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-32"
                 style={{ minHeight: "42px" }}
@@ -569,7 +667,7 @@ export default function ChatPage() {
             </div>
             <button
               onClick={sendMessage}
-              disabled={!input.trim() || isStreaming}
+              disabled={(!input.trim() && pendingImages.length === 0) || isStreaming}
               className="p-2.5 rounded-xl bg-brand-700 text-white hover:bg-brand-800 disabled:opacity-50 transition-colors shrink-0"
             >
               {isStreaming ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}

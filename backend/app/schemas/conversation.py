@@ -26,6 +26,7 @@ class MessageCreate(BaseModel):
     content_text: str = Field(..., min_length=1)
     message_type: str = "text"
     content_json: dict | None = None
+    image_urls: list[str] | None = None
 
 
 class MessageResponse(BaseModel):

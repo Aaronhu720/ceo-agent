@@ -1,7 +1,8 @@
+import os
 import uuid as uuid_mod
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File as FastAPIFile, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,8 @@ from app.services.storage_service import storage_service
 from app.services.audit_service import log_action
 
 router = APIRouter()
+
+UPLOAD_DIR = "/app/uploads"
 
 ALLOWED_MIME_TYPES = {
     "image/jpeg", "image/png", "image/heic", "image/webp",
@@ -213,3 +216,68 @@ async def delete_file(
 
     await db.commit()
     return {"success": True}
+
+
+IMAGE_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/heic"}
+
+
+@router.post("/upload")
+async def upload_file_direct(
+    file: UploadFile = FastAPIFile(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if file.content_type not in IMAGE_MIME_TYPES:
+        raise HTTPException(status_code=400, detail=f"Only images allowed: {file.content_type}")
+
+    content = await file.read()
+    max_bytes = 10 * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail="File too large. Max: 10MB")
+
+    ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "jpg"
+    file_id = str(uuid_mod.uuid4())
+    filename = f"{file_id}.{ext}"
+
+    org_dir = os.path.join(UPLOAD_DIR, str(current_user.organization_id))
+    os.makedirs(org_dir, exist_ok=True)
+
+    filepath = os.path.join(org_dir, filename)
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    file_record = File(
+        id=uuid_mod.UUID(file_id),
+        organization_id=current_user.organization_id,
+        uploaded_by=current_user.id,
+        file_name=filename,
+        original_file_name=file.filename or filename,
+        mime_type=file.content_type,
+        file_size=len(content),
+        storage_provider="local",
+        storage_bucket="uploads",
+        storage_key=f"{current_user.organization_id}/{filename}",
+        processing_status="completed",
+    )
+    db.add(file_record)
+    await db.commit()
+
+    import base64
+    b64 = base64.b64encode(content).decode("utf-8")
+    data_url = f"data:{file.content_type};base64,{b64}"
+
+    serve_url = f"/api/files/serve/{file_id}.{ext}"
+    return {"file_id": file_id, "url": data_url, "serve_url": serve_url, "filename": file.filename}
+
+
+@router.get("/serve/{filename}")
+async def serve_file(filename: str, current_user: User = Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+
+    org_dir = os.path.join(UPLOAD_DIR, str(current_user.organization_id))
+    filepath = os.path.join(org_dir, filename)
+
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(filepath)

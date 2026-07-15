@@ -40,12 +40,16 @@ class ChatService:
         else:
             ceo_agent = await self.orchestrator.get_or_create_ceo_agent()
 
+        image_urls = []
+        if user_message.content_json and "image_urls" in user_message.content_json:
+            image_urls = user_message.content_json["image_urls"]
+
         agent_run = AgentRun(
             organization_id=self.user.organization_id,
             agent_id=ceo_agent.id,
             trigger_type="user_message",
             trigger_id=user_message.id,
-            input_json={"message": user_message.content_text},
+            input_json={"message": user_message.content_text, "image_urls": image_urls},
             status="running",
             started_at=datetime.now(timezone.utc),
         )
@@ -69,6 +73,7 @@ class ChatService:
         messages = await self.context_builder.build_context(
             self.conversation.id,
             user_message.content_text,
+            image_urls=image_urls or None,
         )
 
         # Add tool definitions to system prompt

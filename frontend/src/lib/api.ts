@@ -78,8 +78,32 @@ export const api = {
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
-export async function* streamChat(conversationId: string, message: string) {
+export async function uploadImage(file: File): Promise<{ file_id: string; url: string; serve_url: string; filename: string }> {
   const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/files/upload`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new ApiError(res.status, error.detail || "Upload failed");
+  }
+
+  return res.json();
+}
+
+export async function* streamChat(conversationId: string, message: string, imageUrls?: string[]) {
+  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+
+  const body: Record<string, unknown> = { content_text: message };
+  if (imageUrls && imageUrls.length > 0) {
+    body.image_urls = imageUrls;
+  }
 
   const res = await fetch(`${API_BASE}/api/conversations/${conversationId}/messages`, {
     method: "POST",
@@ -87,7 +111,7 @@ export async function* streamChat(conversationId: string, message: string) {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ content_text: message }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok || !res.body) {

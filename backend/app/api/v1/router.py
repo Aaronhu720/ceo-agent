@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import auth, conversations, memories, tasks, projects, decisions
-from app.api.v1.endpoints import agents, heartbeat, files, notifications, approvals, audit
+from app.api.v1.endpoints import agents, heartbeat, files, notifications, approvals, audit, daily_logs
 
 api_router = APIRouter()
 
@@ -17,3 +17,4 @@ api_router.include_router(files.router, prefix="/files", tags=["Files"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])
 api_router.include_router(approvals.router, prefix="/approvals", tags=["Approvals"])
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit"])
+api_router.include_router(daily_logs.router, prefix="/daily-logs", tags=["DailyLogs"])

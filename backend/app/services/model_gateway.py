@@ -8,7 +8,8 @@ from app.core.config import settings
 @dataclass
 class ChatMessage:
     role: str
-    content: str
+    content: str  # text content
+    image_urls: list[str] | None = None  # optional image URLs for vision
 
 
 @dataclass
@@ -42,12 +43,21 @@ class OpenAIProvider(ChatModelProvider):
         self.base_url = base_url or settings.OPENAI_BASE_URL
         self.model = model or settings.OPENAI_DEFAULT_MODEL
 
+    @staticmethod
+    def _format_message(m: ChatMessage) -> dict:
+        if m.image_urls:
+            content = [{"type": "text", "text": m.content}]
+            for url in m.image_urls:
+                content.append({"type": "image_url", "image_url": {"url": url, "detail": "auto"}})
+            return {"role": m.role, "content": content}
+        return {"role": m.role, "content": m.content}
+
     async def chat(self, messages: list[ChatMessage], **kwargs) -> ChatResponse:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         response = await client.chat.completions.create(
             model=kwargs.get("model", self.model),
-            messages=[{"role": m.role, "content": m.content} for m in messages],
+            messages=[self._format_message(m) for m in messages],
             temperature=kwargs.get("temperature", 0.7),
             max_tokens=kwargs.get("max_tokens", 4096),
         )
@@ -65,7 +75,7 @@ class OpenAIProvider(ChatModelProvider):
         client = AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
         stream = await client.chat.completions.create(
             model=kwargs.get("model", self.model),
-            messages=[{"role": m.role, "content": m.content} for m in messages],
+            messages=[self._format_message(m) for m in messages],
             temperature=kwargs.get("temperature", 0.7),
             max_tokens=kwargs.get("max_tokens", 4096),
             stream=True,

@@ -25,6 +25,10 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.heartbeat_tasks.generate_morning_brief",
         "schedule": crontab(hour=8, minute=30),
     },
+    "daily-chat-reminder": {
+        "task": "app.workers.heartbeat_tasks.generate_chat_reminder",
+        "schedule": crontab(hour=19, minute=0),
+    },
     "daily-evening-review": {
         "task": "app.workers.heartbeat_tasks.generate_evening_review",
         "schedule": crontab(hour=22, minute=0),

@@ -23,6 +23,7 @@ class ContextBuilder:
         conversation_id: UUID,
         user_message: str,
         max_tokens: int = 8000,
+        image_urls: list[str] | None = None,
     ) -> list[ChatMessage]:
         messages = [ChatMessage(role="system", content=await self._build_system_prompt())]
 
@@ -61,7 +62,7 @@ class ContextBuilder:
                 content=f"Current business context:\n\n{context_block}"
             ))
 
-        messages.append(ChatMessage(role="user", content=user_message))
+        messages.append(ChatMessage(role="user", content=user_message, image_urls=image_urls))
         return messages
 
     async def _build_system_prompt(self) -> str:
