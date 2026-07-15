@@ -118,8 +118,10 @@ services:
     container_name: ceoagent-nginx
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
       - frontend
