@@ -100,6 +100,16 @@ export interface Notification {
   created_at: string;
 }
 
+export interface AgentInfo {
+  id: string;
+  name: string;
+  agent_type: string;
+  description: string | null;
+  model_provider: string;
+  model_name: string;
+  status: string;
+}
+
 export interface StreamEvent {
   type: string;
   content?: string;

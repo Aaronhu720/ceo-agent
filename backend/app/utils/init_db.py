@@ -66,6 +66,24 @@ async def init_db():
         db.add(ceo_agent)
         print("Created CEO Agent")
 
+        code_agent = Agent(
+            organization_id=org.id,
+            name="Code Agent",
+            agent_type="code",
+            description="AI programming assistant powered by Claude",
+            system_instructions="You are a senior software engineer. Help the user with coding, debugging, architecture design, and technical decisions. Write clean, production-ready code. Respond in the user's language.",
+            model_provider="anthropic",
+            model_name="claude-sonnet-4-20250514",
+            temperature=0.3,
+            tools_json={"available": [
+                "create_task", "create_project", "propose_memory",
+            ]},
+            permissions_json={"level": "full"},
+            memory_scope="organization",
+        )
+        db.add(code_agent)
+        print("Created Code Agent (Claude)")
+
         await db.commit()
         print("Database initialized successfully")
 

@@ -32,8 +32,13 @@ class ChatService:
         step_counter = 0
 
         # Step 1: Save original message (already done by caller)
-        # Step 15: Create Agent Run
-        ceo_agent = await self.orchestrator.get_or_create_ceo_agent()
+        # Step 15: Create Agent Run — use conversation's agent if set, otherwise CEO agent
+        if self.conversation.agent_id:
+            ceo_agent = await self.orchestrator.get_agent_by_id(self.conversation.agent_id)
+            if not ceo_agent:
+                ceo_agent = await self.orchestrator.get_or_create_ceo_agent()
+        else:
+            ceo_agent = await self.orchestrator.get_or_create_ceo_agent()
 
         agent_run = AgentRun(
             organization_id=self.user.organization_id,

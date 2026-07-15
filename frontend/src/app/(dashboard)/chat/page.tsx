@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, streamChat } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Send, Plus, Loader2, Bot, User, ImagePlus, Mic } from "lucide-react";
-import type { Conversation, Message, StreamEvent } from "@/types";
+import type { Conversation, Message, StreamEvent, AgentInfo } from "@/types";
 import ReactMarkdown from "react-markdown";
 
 export default function ChatPage() {
@@ -17,8 +17,14 @@ export default function ChatPage() {
   const [proposedTasks, setProposedTasks] = useState<string[]>([]);
   const [proposedMemories, setProposedMemories] = useState<string[]>([]);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const { data: agents = [] } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => api.get<AgentInfo[]>("/api/agents"),
+  });
 
   const { data: conversations = [] } = useQuery({
     queryKey: ["conversations"],
@@ -43,10 +49,11 @@ export default function ChatPage() {
   }, [messages, streamingText, scrollToBottom]);
 
   const createConversation = useMutation({
-    mutationFn: () =>
+    mutationFn: (agentId?: string | null) =>
       api.post<Conversation>("/api/conversations", {
         title: "新对话",
         conversation_type: "general",
+        agent_id: agentId || selectedAgentId || undefined,
       }),
     onSuccess: (conv) => {
       setActiveConversation(conv.id);
@@ -59,7 +66,7 @@ export default function ChatPage() {
 
     let convId = activeConversation;
     if (!convId) {
-      const conv = await createConversation.mutateAsync();
+      const conv = await createConversation.mutateAsync(selectedAgentId);
       convId = conv.id;
     }
 
@@ -174,6 +181,23 @@ export default function ChatPage() {
             <Bot className="h-5 w-5 text-brand-600" />
           </button>
           <h2 className="text-sm font-medium">CEO Agent</h2>
+          <div className="ml-auto flex items-center gap-1.5">
+            {agents.map((agent) => (
+              <button
+                key={agent.id}
+                onClick={() => setSelectedAgentId(agent.id)}
+                className={cn(
+                  "px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
+                  selectedAgentId === agent.id || (!selectedAgentId && agent.agent_type === "ceo")
+                    ? "bg-brand-600 text-white"
+                    : "bg-[hsl(var(--muted))] hover:bg-[hsl(var(--muted))]/80"
+                )}
+                title={`${agent.model_provider} / ${agent.model_name}`}
+              >
+                {agent.model_provider === "anthropic" ? "Claude" : "GPT-4o"}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Messages */}

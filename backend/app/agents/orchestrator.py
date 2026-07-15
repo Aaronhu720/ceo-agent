@@ -43,6 +43,12 @@ class AgentOrchestrator:
         self.org_id = org_id
         self.user_id = user_id
 
+    async def get_agent_by_id(self, agent_id: UUID) -> Agent | None:
+        result = await self.db.execute(
+            select(Agent).where(Agent.id == agent_id, Agent.status == "active")
+        )
+        return result.scalar_one_or_none()
+
     async def get_or_create_ceo_agent(self) -> Agent:
         result = await self.db.execute(
             select(Agent).where(
