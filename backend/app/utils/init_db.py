@@ -1,9 +1,10 @@
-"""Database initialization: create default roles and CEO Agent."""
+"""Database initialization: create default user, roles, and CEO Agent."""
 import asyncio
 import uuid
 
 from sqlalchemy import select
 from app.core.database import AsyncSessionLocal, engine, Base
+from app.core.security import hash_password
 from app.models import *  # noqa
 
 
@@ -12,53 +13,58 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
 
     async with AsyncSessionLocal() as db:
-        from app.models.user import Role
+        from app.models.user import Role, User
+        from app.models.organization import Organization
         from app.models.agent import Agent
 
-        existing = await db.execute(select(Role).where(Role.name == "owner"))
-        if not existing.scalar_one_or_none():
-            default_roles = [
-                Role(name="owner", description="Organization owner - full access"),
-                Role(name="super_admin", description="Super administrator"),
-                Role(name="executive", description="Executive level access"),
-                Role(name="manager", description="Manager level access"),
-                Role(name="operator", description="Operator level access"),
-                Role(name="purchaser", description="Purchasing access"),
-                Role(name="finance", description="Finance access"),
-                Role(name="warehouse", description="Warehouse access"),
-                Role(name="designer", description="Designer access"),
-                Role(name="viewer", description="Read-only access"),
-            ]
-            db.add_all(default_roles)
-            await db.flush()
-            print("Created default roles")
+        existing_user = await db.execute(select(User).where(User.email == "aaronhu720@gmail.com"))
+        if existing_user.scalar_one_or_none():
+            print("Default user already exists, skipping init")
+            return
 
-        ceo_check = await db.execute(select(Agent).where(Agent.agent_type == "ceo"))
-        if not ceo_check.scalar_one_or_none():
-            placeholder_org_id = uuid.uuid4()
-            ceo_agent = Agent(
-                organization_id=placeholder_org_id,
-                name="CEO Agent",
-                agent_type="ceo",
-                description="Your AI business partner. Helps with decisions, task tracking, memory management, and daily operations.",
-                system_instructions="You are CEO Agent, an AI business partner for enterprise founders.",
-                model_provider="openai",
-                model_name="gpt-4o",
-                temperature=0.7,
-                tools_json={
-                    "available": [
-                        "create_task", "update_task", "create_project", "update_project",
-                        "create_decision", "propose_memory", "confirm_memory",
-                        "search_memory", "search_entities", "search_files",
-                        "generate_daily_brief", "generate_daily_review",
-                        "create_notification",
-                    ]
-                },
-                permissions_json={"level": "full", "can_create_tasks": True, "can_propose_memories": True},
-                memory_scope="organization",
-            )
-            db.add(ceo_agent)
-            print("Created CEO Agent")
+        role = Role(name="owner", description="Organization owner - full access")
+        db.add(role)
+        await db.flush()
+
+        org = Organization(
+            name="AARON USA LLC",
+            timezone="Asia/Singapore",
+            default_language="zh",
+        )
+        db.add(org)
+        await db.flush()
+
+        user = User(
+            organization_id=org.id,
+            name="Aaron",
+            email="aaronhu720@gmail.com",
+            password_hash=hash_password("ceo2026"),
+            language="zh",
+            timezone="Asia/Singapore",
+            role_id=role.id,
+        )
+        db.add(user)
+        await db.flush()
+        print("Created default user: aaronhu720@gmail.com / ceo2026")
+
+        ceo_agent = Agent(
+            organization_id=org.id,
+            name="CEO Agent",
+            agent_type="ceo",
+            description="Your AI business partner",
+            model_provider="openai",
+            model_name="gpt-4o",
+            temperature=0.7,
+            tools_json={"available": [
+                "create_task", "update_task", "create_project", "update_project",
+                "create_decision", "propose_memory", "search_memory",
+                "search_entities", "create_notification",
+            ]},
+            permissions_json={"level": "full"},
+            memory_scope="organization",
+        )
+        db.add(ceo_agent)
+        print("Created CEO Agent")
 
         await db.commit()
         print("Database initialized successfully")
