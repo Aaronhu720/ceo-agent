@@ -5,64 +5,137 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   MessageSquare, LayoutDashboard, CheckSquare, FolderKanban,
-  GitBranch, Brain, FileText, Bell, ShieldCheck, Bot,
-  HeartPulse, ClipboardList, Settings, LogOut,
+  GitBranch, Brain, AlertTriangle, Bot,
+  HeartPulse, Bell, LogOut,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import type { Task, Decision, Notification } from "@/types";
 
-const navItems = [
-  { href: "/chat", label: "CEO Agent", icon: MessageSquare },
-  { href: "/daily", label: "今日经营", icon: LayoutDashboard },
-  { href: "/tasks", label: "任务", icon: CheckSquare },
-  { href: "/projects", label: "项目", icon: FolderKanban },
-  { href: "/decisions", label: "决策", icon: GitBranch },
-  { href: "/memories", label: "记忆", icon: Brain },
-  { href: "/files", label: "文件", icon: FileText },
-  { href: "/agents", label: "Agent 中心", icon: Bot },
-  { href: "/heartbeat", label: "Heartbeat", icon: HeartPulse },
-  { href: "/notifications", label: "通知", icon: Bell },
-  { href: "/approvals", label: "审批", icon: ShieldCheck },
-  { href: "/audit", label: "操作日志", icon: ClipboardList },
-  { href: "/settings", label: "设置", icon: Settings },
+const navGroups = [
+  {
+    label: "经营决策中心",
+    items: [
+      { href: "/daily", label: "CEO 工作台", icon: LayoutDashboard },
+      { href: "/chat", label: "AI 对话助手", icon: MessageSquare },
+    ],
+  },
+  {
+    label: "执行管理",
+    items: [
+      { href: "/decisions", label: "待决策事项", icon: GitBranch, badgeKey: "decisions" as const },
+      { href: "/tasks", label: "任务与项目看板", icon: CheckSquare },
+      { href: "/projects", label: "项目管理", icon: FolderKanban },
+    ],
+  },
+  {
+    label: "智能系统",
+    items: [
+      { href: "/memories", label: "长期记忆库", icon: Brain },
+      { href: "/agents", label: "多 Agent 协作", icon: Bot },
+      { href: "/heartbeat", label: "风险雷达", icon: AlertTriangle, badgeKey: "risks" as const },
+    ],
+  },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
 
+  const { data: pendingDecisions = [] } = useQuery({
+    queryKey: ["decisions-badge"],
+    queryFn: () => api.get<Decision[]>("/api/decisions?status_filter=proposed"),
+    refetchInterval: 60000,
+  });
+
+  const { data: notifications = [] } = useQuery({
+    queryKey: ["notifications-badge"],
+    queryFn: () => api.get<Notification[]>("/api/notifications?unread_only=true"),
+    refetchInterval: 60000,
+  });
+
+  const badges: Record<string, number> = {
+    decisions: pendingDecisions.length,
+    risks: 0,
+  };
+
   return (
-    <aside className="hidden lg:flex flex-col w-60 border-r bg-[hsl(var(--card))] h-screen sticky top-0">
-      <div className="p-4 border-b">
-        <h1 className="text-lg font-bold text-brand-600">CEO Agent</h1>
-        <p className="text-xs text-[hsl(var(--muted-foreground))] truncate">{user?.name}</p>
+    <aside className="hidden lg:flex flex-col w-60 h-screen sticky top-0 bg-[hsl(var(--sidebar))]">
+      <div className="p-4 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-[hsl(var(--sidebar-muted))] flex items-center justify-center">
+            <LayoutDashboard className="h-4 w-4 text-[hsl(var(--sidebar-accent))]" />
+          </div>
+          <div>
+            <h1 className="text-sm font-bold text-[hsl(var(--sidebar-foreground))]">CEO Agent</h1>
+            <p className="text-[10px] tracking-wider uppercase text-[hsl(var(--sidebar-accent))]">Executive Office</p>
+          </div>
+        </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5 scrollbar-thin">
-        {navItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors",
-              pathname === item.href
-                ? "bg-brand-50 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400 font-medium"
-                : "text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]"
-            )}
-          >
-            <item.icon className="h-4 w-4 shrink-0" />
-            {item.label}
-          </Link>
+      <nav className="flex-1 overflow-y-auto px-3 pb-2 scrollbar-thin space-y-4">
+        {navGroups.map((group) => (
+          <div key={group.label}>
+            <p className="text-[10px] font-medium tracking-wider uppercase text-[hsl(var(--sidebar-foreground))]/50 px-2 mb-1.5">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map((item) => {
+                const isActive = pathname === item.href;
+                const badge = item.badgeKey ? badges[item.badgeKey] : 0;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] transition-colors",
+                      isActive
+                        ? "bg-[hsl(var(--sidebar-muted))] text-[hsl(var(--sidebar-foreground))] font-medium"
+                        : "text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-muted))]/50 hover:text-[hsl(var(--sidebar-foreground))]"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">{item.label}</span>
+                    {badge > 0 && (
+                      <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar))] text-[10px] font-bold px-1">
+                        {badge}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
         ))}
       </nav>
 
-      <div className="p-2 border-t">
-        <button
-          onClick={logout}
-          className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] w-full"
-        >
-          <LogOut className="h-4 w-4" />
-          退出登录
-        </button>
+      {notifications.length > 0 && (
+        <div className="mx-3 mb-2 px-2.5 py-2 rounded-lg bg-[hsl(var(--sidebar-muted))]/50">
+          <Link href="/notifications" className="flex items-center gap-2 text-[hsl(var(--sidebar-foreground))]/70 hover:text-[hsl(var(--sidebar-foreground))] text-[13px]">
+            <Bell className="h-4 w-4" />
+            <span>{notifications.length} 条未读通知</span>
+          </Link>
+        </div>
+      )}
+
+      <div className="p-3 border-t border-[hsl(var(--sidebar-muted))]">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-[hsl(var(--sidebar-muted))] flex items-center justify-center text-[hsl(var(--sidebar-accent))] text-xs font-bold">
+            {user?.name?.charAt(0) || "U"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium text-[hsl(var(--sidebar-foreground))] truncate">{user?.name}</p>
+            <p className="text-[10px] text-[hsl(var(--sidebar-foreground))]/50 truncate">AARON USA LLC</p>
+          </div>
+          <button
+            onClick={logout}
+            className="p-1.5 rounded-lg hover:bg-[hsl(var(--sidebar-muted))] text-[hsl(var(--sidebar-foreground))]/50 hover:text-[hsl(var(--sidebar-foreground))]"
+            title="退出登录"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </aside>
   );

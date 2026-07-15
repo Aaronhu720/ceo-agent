@@ -2,23 +2,66 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { formatDate } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-header";
 import {
-  AlertTriangle, CheckCircle2, Clock, Bell,
-  Camera, Mic, FileText, TrendingUp,
+  TrendingUp, Users, AlertTriangle, BarChart3,
+  ArrowUpRight, ArrowDownRight, CheckCircle2, Clock,
+  Brain, GitBranch, ChevronRight, RefreshCw,
 } from "lucide-react";
-import type { Task, Notification } from "@/types";
+import type { Task, Decision, Memory, Project, Notification } from "@/types";
 import Link from "next/link";
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 6) return "夜深了";
+  if (h < 12) return "早上好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+}
+
+function StatCard({ icon: Icon, label, value, trend, trendUp, color }: {
+  icon: React.ElementType; label: string; value: string | number;
+  trend?: string; trendUp?: boolean; color: string;
+}) {
+  return (
+    <div className="p-4 rounded-xl bg-[hsl(var(--card))] border">
+      <div className="flex items-center gap-2 mb-3">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${color}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <span className="text-xs text-[hsl(var(--muted-foreground))]">{label}</span>
+      </div>
+      <p className="text-2xl font-bold">{value}</p>
+      {trend && (
+        <div className={`flex items-center gap-1 mt-1 text-xs ${trendUp ? "text-green-600" : "text-red-500"}`}>
+          {trendUp ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+          {trend}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function DailyPage() {
   const { data: tasks = [] } = useQuery({
-    queryKey: ["tasks", "active"],
-    queryFn: () => api.get<Task[]>("/api/tasks?status_filter=in_progress"),
+    queryKey: ["tasks-all"],
+    queryFn: () => api.get<Task[]>("/api/tasks"),
   });
 
-  const { data: pendingTasks = [] } = useQuery({
-    queryKey: ["tasks", "pending"],
-    queryFn: () => api.get<Task[]>("/api/tasks?status_filter=pending"),
+  const { data: decisions = [] } = useQuery({
+    queryKey: ["decisions"],
+    queryFn: () => api.get<Decision[]>("/api/decisions"),
+  });
+
+  const { data: memories = [] } = useQuery({
+    queryKey: ["memories"],
+    queryFn: () => api.get<Memory[]>("/api/memories"),
+  });
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: () => api.get<Project[]>("/api/projects"),
   });
 
   const { data: notifications = [] } = useQuery({
@@ -26,92 +69,233 @@ export default function DailyPage() {
     queryFn: () => api.get<Notification[]>("/api/notifications?unread_only=true"),
   });
 
+  const activeTasks = tasks.filter(t => t.status === "in_progress");
+  const pendingDecisions = decisions.filter(d => d.decision_status === "proposed");
+  const confirmedMemories = memories.filter(m => m.status === "confirmed");
+  const activeProjects = projects.filter(p => p.status === "active");
+  const atRiskTasks = tasks.filter(t => t.risk_level === "high" || t.status === "at_risk");
+
   const today = new Date();
+  const dateStr = `${today.getFullYear()}年${today.getMonth()+1}月${today.getDate()}日`;
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-bold">今日经营</h1>
-        <p className="text-sm text-[hsl(var(--muted-foreground))]">{formatDate(today)}</p>
-      </div>
-
-      {/* Quick actions */}
-      <div className="grid grid-cols-3 gap-3">
-        <Link href="/chat" className="flex flex-col items-center gap-1.5 p-4 rounded-xl bg-[hsl(var(--card))] border hover:border-brand-300 transition-colors">
-          <FileText className="h-6 w-6 text-brand-500" />
-          <span className="text-xs">快速记录</span>
-        </Link>
-        <button className="flex flex-col items-center gap-1.5 p-4 rounded-xl bg-[hsl(var(--card))] border hover:border-brand-300 transition-colors">
-          <Camera className="h-6 w-6 text-green-500" />
-          <span className="text-xs">拍照</span>
-        </button>
-        <button className="flex flex-col items-center gap-1.5 p-4 rounded-xl bg-[hsl(var(--card))] border hover:border-brand-300 transition-colors">
-          <Mic className="h-6 w-6 text-purple-500" />
-          <span className="text-xs">语音</span>
+    <div className="max-w-6xl mx-auto px-6 py-6">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <p className="text-xs font-semibold tracking-wider uppercase text-brand-600 mb-1">CEO Agent</p>
+          <h1 className="text-2xl font-bold">{getGreeting()}，Aaron</h1>
+          <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+            {dateStr} · 以下是你的经营概览
+          </p>
+        </div>
+        <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] transition-colors">
+          <RefreshCw className="h-3.5 w-3.5" />
+          更新数据
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="p-4 rounded-xl bg-[hsl(var(--card))] border">
-          <div className="flex items-center gap-2 mb-1">
-            <Clock className="h-4 w-4 text-orange-500" />
-            <span className="text-xs text-[hsl(var(--muted-foreground))]">进行中</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard
+              icon={BarChart3} label="活跃项目" value={activeProjects.length}
+              color="bg-brand-100 text-brand-700 dark:bg-brand-900/30 dark:text-brand-400"
+            />
+            <StatCard
+              icon={TrendingUp} label="进行中任务" value={activeTasks.length}
+              color="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+            />
+            <StatCard
+              icon={Users} label="记忆条目" value={confirmedMemories.length}
+              color="bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400"
+            />
+            <StatCard
+              icon={AlertTriangle} label="风险事项" value={atRiskTasks.length}
+              trend={atRiskTasks.length > 0 ? "需要关注" : "无风险"}
+              trendUp={atRiskTasks.length === 0}
+              color="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+            />
           </div>
-          <p className="text-2xl font-bold">{tasks.length}</p>
-        </div>
-        <div className="p-4 rounded-xl bg-[hsl(var(--card))] border">
-          <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-            <span className="text-xs text-[hsl(var(--muted-foreground))]">待处理</span>
-          </div>
-          <p className="text-2xl font-bold">{pendingTasks.length}</p>
-        </div>
-      </div>
 
-      {/* Notifications */}
-      {notifications.length > 0 && (
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold flex items-center gap-2">
-            <Bell className="h-4 w-4" /> 最新通知
-          </h2>
-          {notifications.slice(0, 5).map((n) => (
-            <div key={n.id} className="p-3 rounded-xl bg-[hsl(var(--card))] border text-sm">
-              <p className="font-medium">{n.title}</p>
-              {n.content && <p className="text-[hsl(var(--muted-foreground))] mt-1">{n.content}</p>}
+          {/* AI Summary Card */}
+          <div className="p-5 rounded-xl bg-brand-900 text-white dark:bg-brand-950">
+            <div className="flex items-center gap-2 mb-3">
+              <Brain className="h-5 w-5 text-brand-300" />
+              <span className="text-sm font-semibold text-brand-200">CEO Agent 核心结论</span>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Today's tasks */}
-      <div className="space-y-2">
-        <h2 className="text-sm font-semibold flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4" /> 今日任务
-        </h2>
-        {tasks.length === 0 && pendingTasks.length === 0 ? (
-          <p className="text-sm text-[hsl(var(--muted-foreground))] p-4 text-center">暂无任务</p>
-        ) : (
-          [...tasks, ...pendingTasks].slice(0, 10).map((task) => (
+            <p className="text-sm leading-relaxed text-brand-100">
+              {activeTasks.length > 0
+                ? `当前有 ${activeTasks.length} 个任务进行中，${activeProjects.length} 个活跃项目。`
+                : "暂无进行中的任务。"}
+              {pendingDecisions.length > 0
+                ? ` ${pendingDecisions.length} 个决策待你审批。`
+                : ""}
+              {atRiskTasks.length > 0
+                ? ` 注意：${atRiskTasks.length} 个事项存在风险，建议优先处理。`
+                : " 整体经营状态良好，无高风险事项。"}
+              {notifications.length > 0
+                ? ` 另有 ${notifications.length} 条未读通知。`
+                : ""}
+            </p>
             <Link
-              key={task.id}
-              href="/tasks"
-              className="block p-3 rounded-xl bg-[hsl(var(--card))] border text-sm hover:border-brand-300 transition-colors"
+              href="/chat"
+              className="inline-flex items-center gap-1 mt-3 text-xs text-brand-300 hover:text-white transition-colors"
             >
-              <div className="flex items-center justify-between">
-                <span className="font-medium">{task.title}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${
-                  task.priority === "high" ? "bg-red-100 text-red-700" :
-                  task.priority === "medium" ? "bg-yellow-100 text-yellow-700" :
-                  "bg-green-100 text-green-700"
-                }`}>{task.priority}</span>
-              </div>
-              {task.due_date && (
-                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">截止: {task.due_date}</p>
-              )}
+              与 CEO Agent 对话 <ChevronRight className="h-3 w-3" />
             </Link>
-          ))
-        )}
+          </div>
+
+          {/* Pending Decisions */}
+          {pendingDecisions.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold">待决策事项</h2>
+                <Link href="/decisions" className="text-xs text-brand-600 hover:underline">查看全部</Link>
+              </div>
+              <div className="space-y-2">
+                {pendingDecisions.slice(0, 3).map((d) => (
+                  <Link
+                    key={d.id}
+                    href="/decisions"
+                    className="flex items-start gap-3 p-4 rounded-xl bg-[hsl(var(--card))] border hover:border-brand-300 transition-colors"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gold-100 dark:bg-gold-900/30 flex items-center justify-center shrink-0 mt-0.5">
+                      <GitBranch className="h-4 w-4 text-gold-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium truncate">{d.title}</p>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${
+                          d.risk_level === "high" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                          "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                        }`}>{d.risk_level === "high" ? "紧急" : "重要"}</span>
+                      </div>
+                      {d.problem_statement && (
+                        <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5 line-clamp-1">{d.problem_statement}</p>
+                      )}
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-[hsl(var(--muted-foreground))] shrink-0 mt-1" />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Active Tasks */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold">进行中的任务</h2>
+              <Link href="/tasks" className="text-xs text-brand-600 hover:underline">查看全部</Link>
+            </div>
+            <div className="space-y-2">
+              {activeTasks.length === 0 && tasks.filter(t => t.status === "pending").length === 0 ? (
+                <p className="text-sm text-[hsl(var(--muted-foreground))] text-center py-6">暂无任务</p>
+              ) : (
+                [...activeTasks, ...tasks.filter(t => t.status === "pending")].slice(0, 5).map((task) => (
+                  <Link
+                    key={task.id}
+                    href="/tasks"
+                    className="flex items-center gap-3 p-3 rounded-xl bg-[hsl(var(--card))] border hover:border-brand-300 transition-colors text-sm"
+                  >
+                    {task.status === "in_progress" ? (
+                      <Clock className="h-4 w-4 text-blue-500 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 text-gray-400 shrink-0" />
+                    )}
+                    <span className="flex-1 truncate font-medium">{task.title}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${
+                      task.priority === "high" || task.priority === "urgent"
+                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                        : task.priority === "medium"
+                        ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                    }`}>{task.priority}</span>
+                    {task.due_date && (
+                      <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0">{task.due_date}</span>
+                    )}
+                  </Link>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Right sidebar */}
+        <div className="space-y-4">
+          {/* Today Focus */}
+          <div className="p-4 rounded-xl bg-[hsl(var(--card))] border">
+            <h3 className="text-sm font-semibold mb-3">今日关注</h3>
+            <div className="space-y-3">
+              <Link href="/heartbeat" className="flex items-center justify-between text-sm hover:text-brand-600 transition-colors">
+                <span className="text-[hsl(var(--muted-foreground))]">风险事项</span>
+                <span className="font-medium">{atRiskTasks.length} 项</span>
+              </Link>
+              <div className="h-px bg-[hsl(var(--border))]" />
+              <Link href="/decisions" className="flex items-center justify-between text-sm hover:text-brand-600 transition-colors">
+                <span className="text-[hsl(var(--muted-foreground))]">待决策事项</span>
+                <span className="font-medium">{pendingDecisions.length} 条</span>
+              </Link>
+              <div className="h-px bg-[hsl(var(--border))]" />
+              <Link href="/projects" className="flex items-center justify-between text-sm hover:text-brand-600 transition-colors">
+                <span className="text-[hsl(var(--muted-foreground))]">活跃项目</span>
+                <span className="font-medium">{activeProjects.length} 个</span>
+              </Link>
+              <div className="h-px bg-[hsl(var(--border))]" />
+              <Link href="/memories" className="flex items-center justify-between text-sm hover:text-brand-600 transition-colors">
+                <span className="text-[hsl(var(--muted-foreground))]">长期记忆</span>
+                <span className="font-medium">{confirmedMemories.length} 条</span>
+              </Link>
+            </div>
+          </div>
+
+          {/* Active Projects */}
+          {activeProjects.length > 0 && (
+            <div className="p-4 rounded-xl bg-[hsl(var(--card))] border">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">项目进度</h3>
+                <Link href="/projects" className="text-xs text-brand-600 hover:underline">全部</Link>
+              </div>
+              <div className="space-y-3">
+                {activeProjects.slice(0, 4).map((p) => (
+                  <div key={p.id}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="truncate font-medium">{p.name}</span>
+                      <span className="text-xs text-[hsl(var(--muted-foreground))] shrink-0 ml-2">{p.progress_percent}%</span>
+                    </div>
+                    <div className="h-1.5 bg-[hsl(var(--muted))] rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-brand-500 rounded-full transition-all"
+                        style={{ width: `${p.progress_percent}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Notifications */}
+          {notifications.length > 0 && (
+            <div className="p-4 rounded-xl bg-[hsl(var(--card))] border">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold">最新通知</h3>
+                <Link href="/notifications" className="text-xs text-brand-600 hover:underline">全部</Link>
+              </div>
+              <div className="space-y-2">
+                {notifications.slice(0, 3).map((n) => (
+                  <div key={n.id} className="text-sm">
+                    <p className="font-medium text-xs">{n.title}</p>
+                    {n.content && (
+                      <p className="text-xs text-[hsl(var(--muted-foreground))] line-clamp-1">{n.content}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

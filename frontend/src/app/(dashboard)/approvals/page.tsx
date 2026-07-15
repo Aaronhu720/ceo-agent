@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { formatRelativeTime } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/page-header";
 import { ShieldCheck, Check, X } from "lucide-react";
 
 interface Approval {
@@ -33,8 +34,8 @@ export default function ApprovalsPage() {
   });
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-      <h1 className="text-xl font-bold">审批中心</h1>
+    <div className="max-w-4xl mx-auto px-6 py-6 space-y-4">
+      <PageHeader tag="Approvals" title="审批中心" description="管理 Agent 提交的操作审批请求。" />
 
       <div className="space-y-2">
         {approvals.map((a) => (

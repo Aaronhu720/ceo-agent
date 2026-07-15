@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Home, MessageSquare, CheckSquare, FolderKanban, User } from "lucide-react";
+import { LayoutDashboard, MessageSquare, CheckSquare, Brain, User } from "lucide-react";
 
 const mobileNavItems = [
-  { href: "/daily", label: "首页", icon: Home },
-  { href: "/chat", label: "Agent", icon: MessageSquare },
+  { href: "/daily", label: "工作台", icon: LayoutDashboard },
+  { href: "/chat", label: "对话", icon: MessageSquare },
   { href: "/tasks", label: "任务", icon: CheckSquare },
-  { href: "/projects", label: "项目", icon: FolderKanban },
+  { href: "/memories", label: "记忆", icon: Brain },
   { href: "/settings", label: "我的", icon: User },
 ];
 
@@ -26,7 +26,7 @@ export function MobileNav() {
             className={cn(
               "flex flex-col items-center gap-0.5 px-3 py-1 text-xs transition-colors",
               pathname === item.href
-                ? "text-brand-600"
+                ? "text-brand-700 dark:text-brand-400"
                 : "text-[hsl(var(--muted-foreground))]"
             )}
           >
