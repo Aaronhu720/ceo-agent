@@ -95,6 +95,7 @@ export default function MercadoLibrePage() {
   const [previewData, setPreviewData] = useState<PreviewData | null>(null);
   const [publishPrice, setPublishPrice] = useState<string>("");
   const [titleOverride, setTitleOverride] = useState("");
+  const [orderedImages, setOrderedImages] = useState<string[]>([]);
   const [publishResult, setPublishResult] = useState<{
     success: boolean;
     item_id?: string;
@@ -171,11 +172,12 @@ export default function MercadoLibrePage() {
         setPublishPrice(String(data.listing_data.price));
       }
       setTitleOverride(data.listing_data.title);
+      setOrderedImages(data.listing_data.pim_images || []);
     },
   });
 
   const publishMutation = useMutation({
-    mutationFn: (body: { account_id: string; pim_sku: string; price?: number; title_override?: string }) =>
+    mutationFn: (body: { account_id: string; pim_sku: string; price?: number; title_override?: string; image_urls?: string[] }) =>
       api.post<{ success: boolean; item_id?: string; permalink?: string; error?: unknown }>(
         "/api/mercadolibre/publish-from-pim",
         body
@@ -203,6 +205,7 @@ export default function MercadoLibrePage() {
     if (!selectedAccountId || !searchSku.trim()) return;
     setPreviewData(null);
     setPublishResult(null);
+    setOrderedImages([]);
     previewMutation.mutate({
       account_id: selectedAccountId,
       pim_sku: searchSku.trim(),
@@ -217,7 +220,25 @@ export default function MercadoLibrePage() {
       pim_sku: searchSku.trim(),
       price: publishPrice ? parseFloat(publishPrice) : undefined,
       title_override: titleOverride || undefined,
+      image_urls: orderedImages.length > 0 ? orderedImages : undefined,
     });
+  };
+
+  const moveImage = (from: number, to: number) => {
+    if (to < 0 || to >= orderedImages.length) return;
+    const next = [...orderedImages];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setOrderedImages(next);
+  };
+
+  const setAsMainImage = (index: number) => {
+    if (index === 0) return;
+    moveImage(index, 0);
+  };
+
+  const removeImage = (index: number) => {
+    setOrderedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -585,22 +606,57 @@ export default function MercadoLibrePage() {
                       </div>
                     </div>
 
-                    {/* Images */}
-                    {previewData.listing_data.pim_images && previewData.listing_data.pim_images.length > 0 && (
+                    {/* Images - reorderable */}
+                    {orderedImages.length > 0 && (
                       <div>
                         <p className="text-xs text-[hsl(var(--muted-foreground))] mb-2 flex items-center gap-1">
                           <Image className="h-3 w-3" />
-                          产品原图 ({previewData.listing_data.pim_images.length} 张)
+                          产品图片 ({orderedImages.length} 张) — 第一张为主图，点击设为主图，箭头调整顺序
                         </p>
-                        <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                          {previewData.listing_data.pim_images.map((url, i) => (
-                            <div key={i} className="aspect-square rounded-lg border overflow-hidden bg-white">
-                              <img
-                                src={url}
-                                alt={`Product image ${i + 1}`}
-                                className="w-full h-full object-contain"
-                                loading="lazy"
-                              />
+                        <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
+                          {orderedImages.map((url, i) => (
+                            <div key={url} className={cn(
+                              "relative group rounded-lg border-2 overflow-hidden bg-white",
+                              i === 0 ? "border-yellow-400 ring-2 ring-yellow-200 dark:ring-yellow-800" : "border-transparent hover:border-[hsl(var(--border))]"
+                            )}>
+                              {i === 0 && (
+                                <span className="absolute top-1 left-1 z-10 bg-yellow-400 text-black text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                  主图
+                                </span>
+                              )}
+                              <div className="aspect-square cursor-pointer" onClick={() => setAsMainImage(i)}>
+                                <img
+                                  src={url}
+                                  alt={`Product image ${i + 1}`}
+                                  className="w-full h-full object-contain"
+                                  loading="lazy"
+                                />
+                              </div>
+                              <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 py-1 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); moveImage(i, i - 1); }}
+                                  disabled={i === 0}
+                                  className="text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/20 disabled:opacity-30"
+                                  title="左移"
+                                >
+                                  ←
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); moveImage(i, i + 1); }}
+                                  disabled={i === orderedImages.length - 1}
+                                  className="text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/20 disabled:opacity-30"
+                                  title="右移"
+                                >
+                                  →
+                                </button>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); removeImage(i); }}
+                                  className="text-red-300 text-xs px-1.5 py-0.5 rounded hover:bg-white/20"
+                                  title="移除"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
                           ))}
                         </div>
