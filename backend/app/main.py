@@ -78,3 +78,16 @@ app.include_router(api_router, prefix="/api")
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "service": settings.APP_NAME, "version": "0.1.0"}
+
+
+# ML notification webhook alias (matches URL configured in ML developer console)
+@app.post("/api/integrations/mercadolibre/webhook")
+async def ml_webhook_alias(request: Request):
+    import logging
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    logging.getLogger(__name__).info("ML webhook notification: %s", body)
+    return {"status": "ok"}
