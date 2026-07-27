@@ -226,6 +226,25 @@ async def _build_telegram_context(user_id: int) -> list[ChatMessage]:
     return messages
 
 
+async def _send_reply_with_voice(update: Update, reply: str):
+    """Send reply as both text and voice. Always sends text first, then voice audio."""
+    if len(reply) <= 4096:
+        await update.message.reply_text(reply)
+    else:
+        chunks = [reply[i:i + 4000] for i in range(0, len(reply), 4000)]
+        for chunk in chunks:
+            await update.message.reply_text(chunk)
+
+    try:
+        await update.message.chat.send_action("record_voice")
+        voice_buf = await _text_to_speech(reply)
+        if voice_buf:
+            await update.message.reply_voice(voice=voice_buf)
+            logger.info("Voice reply sent")
+    except Exception as e:
+        logger.warning("TTS reply failed, text already sent", error=str(e))
+
+
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import traceback
     if not update.message or not update.effective_user or not update.message.text:
@@ -255,12 +274,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         await _save_chat_message(user_id, "assistant", reply)
 
-        if len(reply) <= 4096:
-            await update.message.reply_text(reply)
-        else:
-            chunks = [reply[i:i+4000] for i in range(0, len(reply), 4000)]
-            for chunk in chunks:
-                await update.message.reply_text(chunk)
+        await _send_reply_with_voice(update, reply)
 
         logger.info("Telegram reply sent")
 
@@ -400,25 +414,9 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await _save_chat_message(user_id, "assistant", reply)
 
-        await update.message.chat.send_action("record_voice")
-        voice_sent = False
-        try:
-            voice_buf = await _text_to_speech(reply)
-            if voice_buf:
-                await update.message.reply_voice(voice=voice_buf, caption=reply[:1024] if len(reply) > 200 else None)
-                voice_sent = True
-        except Exception as tts_err:
-            logger.warning("TTS failed, falling back to text", error=str(tts_err))
+        await _send_reply_with_voice(update, reply)
 
-        if not voice_sent:
-            if len(reply) <= 4096:
-                await update.message.reply_text(reply)
-            else:
-                chunks = [reply[i:i + 4000] for i in range(0, len(reply), 4000)]
-                for chunk in chunks:
-                    await update.message.reply_text(chunk)
-
-        logger.info("Voice message processed and replied", voice_reply=voice_sent)
+        logger.info("Voice message processed and replied")
 
     except Exception as e:
         logger.error("Telegram voice handler failed", error=str(e), traceback=traceback.format_exc())
