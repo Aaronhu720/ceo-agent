@@ -17,6 +17,7 @@ from telegram.ext import (
 
 from app.core.config import settings
 from app.services.model_gateway import get_model_provider, ChatMessage
+from app.services.url_fetcher import extract_urls, fetch_url_content
 
 logger = structlog.get_logger()
 
@@ -226,43 +227,6 @@ async def _build_telegram_context(user_id: int) -> list[ChatMessage]:
     return messages
 
 
-async def _fetch_url_content(url: str) -> str | None:
-    """Fetch a URL and extract readable text content."""
-    import httpx
-    import re
-    try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, verify=False) as client:
-            resp = await client.get(url, headers={
-                "User-Agent": "Mozilla/5.0 (compatible; CEOAgent/1.0)",
-                "Accept": "text/html,application/json,text/plain",
-            })
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "")
-
-            if "application/json" in content_type:
-                return resp.text[:15000]
-
-            html = resp.text
-            html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
-            html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL)
-            html = re.sub(r'<nav[^>]*>.*?</nav>', '', html, flags=re.DOTALL)
-            html = re.sub(r'<footer[^>]*>.*?</footer>', '', html, flags=re.DOTALL)
-            html = re.sub(r'<[^>]+>', ' ', html)
-            html = re.sub(r'\s+', ' ', html).strip()
-            text = html[:15000]
-            logger.info("URL content fetched", url=url, length=len(text))
-            return text
-    except Exception as e:
-        logger.warning("Failed to fetch URL", url=url, error=str(e))
-        return None
-
-
-def _extract_urls(text: str) -> list[str]:
-    """Extract URLs from text."""
-    import re
-    return re.findall(r'https?://[^\s<>"\')\]]+', text)
-
-
 async def _send_reply_with_voice(update: Update, reply: str):
     """Send reply as both text and voice. Always sends text first, then voice audio."""
     if len(reply) <= 4096:
@@ -299,12 +263,12 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     await _save_chat_message(user_id, "user", user_text)
 
     try:
-        urls = _extract_urls(user_text)
+        urls = extract_urls(user_text)
         url_contents = []
         if urls:
             await update.message.reply_text(f"🔗 正在读取 {len(urls)} 个链接...")
             for url in urls[:3]:
-                content = await _fetch_url_content(url)
+                content = await fetch_url_content(url)
                 if content:
                     url_contents.append(f"[网页内容: {url}]\n{content}")
 

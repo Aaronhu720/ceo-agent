@@ -10,6 +10,7 @@ from app.models.task import Task
 from app.models.project import Project
 from app.models.decision import Decision
 from app.services.model_gateway import ChatMessage
+from app.services.url_fetcher import extract_urls, fetch_urls_from_text
 
 
 class ContextBuilder:
@@ -54,6 +55,12 @@ class ContextBuilder:
         if pending_decisions:
             dec_text = "\n".join([f"- {d.title} ({d.decision_status})" for d in pending_decisions[:5]])
             context_parts.append(f"## Pending Decisions\n{dec_text}")
+
+        urls = extract_urls(user_message)
+        if urls:
+            url_content = await fetch_urls_from_text(user_message)
+            if url_content:
+                context_parts.append(f"## Web Page Content\n{url_content}")
 
         if context_parts:
             context_block = "\n\n".join(context_parts)
