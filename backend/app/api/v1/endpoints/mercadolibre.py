@@ -1,8 +1,9 @@
 """Mercado Libre multi-country management API."""
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from app.core.deps import get_current_user
 from app.models.user import User
 from app.models.mercadolibre import MLAccount, MLListing, ML_SITES
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -313,6 +315,49 @@ async def get_stats(
         "connected_accounts": connected_q.scalar() or 0,
         "total_listings": listings_q.scalar() or 0,
     }
+
+
+# --- Notifications (required by ML security configuration) ---
+
+@router.post("/notifications")
+async def ml_notifications(request: Request):
+    """Webhook for Mercado Libre IPN (Instant Payment Notifications).
+    ML sends notifications about orders, questions, messages, etc."""
+    try:
+        body = await request.json()
+        logger.info("ML notification received: %s", body)
+    except Exception:
+        pass
+    return JSONResponse({"status": "ok"}, status_code=200)
+
+
+@router.post("/delete-notification")
+async def ml_delete_notification(request: Request):
+    """Webhook for ML GDPR data deletion requests.
+    Required by security configuration."""
+    try:
+        body = await request.json()
+        logger.info("ML delete notification: %s", body)
+    except Exception:
+        pass
+    return JSONResponse({"status": "received"}, status_code=200)
+
+
+@router.get("/delete-notification")
+async def ml_delete_notification_get():
+    """GET handler for ML delete notification URL verification."""
+    return JSONResponse({"status": "ok"}, status_code=200)
+
+
+@router.post("/status-notification")
+async def ml_status_notification(request: Request):
+    """Webhook for ML app status change notifications."""
+    try:
+        body = await request.json()
+        logger.info("ML status notification: %s", body)
+    except Exception:
+        pass
+    return JSONResponse({"status": "received"}, status_code=200)
 
 
 # --- Helpers ---
