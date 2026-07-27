@@ -18,7 +18,7 @@ from telegram.ext import (
 from app.core.config import settings
 from app.services.model_gateway import get_model_provider, ChatMessage
 from app.services.url_fetcher import extract_urls, fetch_url_content
-from app.services.pim_service import get_product_summary
+from app.services.pim_service import get_product_summary, search_products
 
 logger = structlog.get_logger()
 
@@ -228,22 +228,29 @@ async def _build_telegram_context(user_id: int) -> list[ChatMessage]:
     return messages
 
 
-_PIM_KEYWORDS = {"产品", "product", "库存", "inventory", "stock", "sku", "pim",
-                 "缺货", "产品线", "品类", "category", "商品", "listing"}
+import re
+_SKU_PATTERN = re.compile(r'[A-Z]{1,5}[-]?\d{3,6}[A-Z0-9-]*', re.IGNORECASE)
 
 
 async def _maybe_add_pim_context(messages: list[ChatMessage], user_text: str):
-    """Add PIM product data to context if the message is product-related."""
+    """Always add PIM product summary + search for specific SKUs."""
     if not settings.PIM_USERNAME:
         return
-    msg_lower = user_text.lower()
-    if not any(kw in msg_lower for kw in _PIM_KEYWORDS) and "pim.usaaron.com" not in msg_lower:
-        return
     try:
+        parts = []
         summary = await get_product_summary()
         if summary:
-            messages.append(ChatMessage(role="system", content=summary))
-            logger.info("PIM context added to Telegram")
+            parts.append(summary)
+
+        skus = _SKU_PATTERN.findall(user_text)
+        for sku in skus[:5]:
+            result = await search_products(sku)
+            if result and "无结果" not in result:
+                parts.append(result)
+
+        if parts:
+            messages.append(ChatMessage(role="system", content="\n\n".join(parts)))
+            logger.info("PIM context added to Telegram", parts=len(parts))
     except Exception as e:
         logger.warning("PIM context failed for Telegram", error=str(e))
 

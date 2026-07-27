@@ -166,23 +166,54 @@ Format:
         )
         return list(result.scalars().all())
 
+    _SKU_PATTERN = None
+
+    @classmethod
+    def _get_sku_pattern(cls):
+        if cls._SKU_PATTERN is None:
+            import re
+            cls._SKU_PATTERN = re.compile(r'[A-Z]{1,5}[-]?\d{3,6}[A-Z0-9-]*', re.IGNORECASE)
+        return cls._SKU_PATTERN
+
     async def _get_pim_context(self, user_message: str) -> str | None:
-        """Always load PIM product data as business context."""
+        """Load PIM product summary + search for specific SKUs mentioned."""
         import structlog
         logger = structlog.get_logger()
         from app.core.config import settings
         if not settings.PIM_USERNAME:
-            logger.debug("PIM skipped: no username configured")
             return None
 
+        parts = []
         try:
-            logger.info("Fetching PIM product summary...")
             summary = await get_product_summary()
             if summary:
-                logger.info("PIM context loaded", length=len(summary))
-            else:
-                logger.warning("PIM returned empty summary")
-            return summary if summary else None
+                parts.append(summary)
+
+            skus = self._get_sku_pattern().findall(user_message)
+            if skus:
+                for sku in skus[:5]:
+                    result = await search_products(sku)
+                    if result and "无结果" not in result:
+                        parts.append(result)
+                        logger.info("PIM SKU search hit", sku=sku)
+
+            search_terms = []
+            for kw in ["产品", "型号", "库存", "缺货"]:
+                if kw in user_message:
+                    words = user_message.replace("？", "").replace("?", "").split()
+                    for w in words:
+                        if len(w) >= 2 and w not in ["产品", "型号", "库存", "缺货", "这个", "有没有", "查一下", "帮我", "我们"]:
+                            search_terms.append(w)
+
+            for term in search_terms[:3]:
+                result = await search_products(term)
+                if result and "无结果" not in result:
+                    parts.append(result)
+
+            if parts:
+                logger.info("PIM context loaded", parts=len(parts))
+                return "\n\n".join(parts)
+            return None
         except Exception as e:
             logger.error("PIM context fetch failed", error=str(e))
             return None
