@@ -1,8 +1,10 @@
 """Telegram Bot integration for CEO Agent."""
 import base64
 import json
+import tempfile
 import structlog
 from io import BytesIO
+from pathlib import Path
 
 from telegram import Update, Bot
 from telegram.ext import (
@@ -315,6 +317,80 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f"图片处理失败: {str(e)}")
 
 
+async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle voice messages: download OGG, transcribe with Whisper, then process as text."""
+    import traceback
+    if not update.message or not update.effective_user:
+        return
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("⛔ 未授权，请联系管理员。")
+        return
+
+    user_id = update.effective_user.id
+    logger.info("Telegram voice message received", user_id=user_id)
+
+    await update.message.chat.send_action("typing")
+
+    try:
+        voice = update.message.voice or update.message.audio
+        if not voice:
+            await update.message.reply_text("无法识别语音文件。")
+            return
+
+        file = await context.bot.get_file(voice.file_id)
+        buf = BytesIO()
+        await file.download_to_memory(buf)
+        buf.seek(0)
+
+        import httpx
+        audio_bytes = buf.read()
+        logger.info("Voice file downloaded", size=len(audio_bytes))
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{settings.OPENAI_BASE_URL}/audio/transcriptions",
+                headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}"},
+                files={"file": ("voice.ogg", audio_bytes, "audio/ogg")},
+                data={"model": "whisper-1", "language": "zh"},
+            )
+            resp.raise_for_status()
+            transcription = resp.json().get("text", "").strip()
+
+        if not transcription:
+            await update.message.reply_text("语音识别结果为空，请重新发送。")
+            return
+
+        logger.info("Voice transcribed", text=transcription[:80])
+        await update.message.reply_text(f"🎙️ 语音识别：{transcription}")
+
+        await _save_chat_message(user_id, "user", f"[语音] {transcription}")
+
+        messages = await _build_telegram_context(user_id)
+        messages.append(ChatMessage(role="user", content=transcription))
+
+        provider = get_model_provider("openai")
+        response = await provider.chat(messages, model="gpt-4o", temperature=0.7, max_tokens=2000)
+        reply = response.content
+
+        await _save_chat_message(user_id, "assistant", reply)
+
+        if len(reply) <= 4096:
+            await update.message.reply_text(reply)
+        else:
+            chunks = [reply[i:i + 4000] for i in range(0, len(reply), 4000)]
+            for chunk in chunks:
+                await update.message.reply_text(chunk)
+
+        logger.info("Voice message processed and replied")
+
+    except Exception as e:
+        logger.error("Telegram voice handler failed", error=str(e), traceback=traceback.format_exc())
+        try:
+            await update.message.reply_text(f"语音处理失败: {str(e)}")
+        except Exception:
+            pass
+
+
 def create_bot_app() -> Application | None:
     if not settings.TELEGRAM_BOT_TOKEN:
         logger.warning("TELEGRAM_BOT_TOKEN not set, Telegram bot disabled")
@@ -332,6 +408,7 @@ def create_bot_app() -> Application | None:
     app.add_handler(CommandHandler("tasks", cmd_tasks))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo_message))
+    app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, handle_voice_message))
 
     return app
 
