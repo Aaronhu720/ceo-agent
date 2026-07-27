@@ -6,7 +6,7 @@ from sqlalchemy import Column, String, Integer, Float, Boolean, DateTime, Text, 
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.session import Base
+from app.core.database import Base
 from app.models.base import TimestampMixin, OrgScopedMixin, StatusMixin, MetadataMixin
 
 
