@@ -305,6 +305,25 @@ export default function ChatPage() {
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length === 0) return;
+    e.preventDefault();
+    const newImages = imageFiles.slice(0, 4 - pendingImages.length).map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setPendingImages((prev) => [...prev, ...newImages].slice(0, 4));
+  };
+
   const toggleSpeak = (msgId: string, text: string) => {
     if (speakingId === msgId) {
       window.speechSynthesis?.cancel();
@@ -659,6 +678,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
                 placeholder={isListening ? "正在听你说话..." : pendingImages.length > 0 ? "描述这些图片，或直接发送..." : "向 CEO Agent 询问经营问题..."}
                 rows={1}
                 className="w-full resize-none rounded-xl border bg-transparent px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 max-h-32"
