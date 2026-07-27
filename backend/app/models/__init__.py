@@ -13,6 +13,7 @@ from app.models.notification import Notification
 from app.models.approval import Approval
 from app.models.file import File
 from app.models.audit_log import AuditLog
+from app.models.mercadolibre import MLAccount, MLListing
 
 __all__ = [
     "Organization", "User", "Role",
@@ -24,4 +25,5 @@ __all__ = [
     "HeartbeatRule", "HeartbeatRun",
     "DailyLog", "Notification", "Approval",
     "File", "AuditLog",
+    "MLAccount", "MLListing",
 ]

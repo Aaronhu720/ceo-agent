@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.endpoints import auth, conversations, memories, tasks, projects, decisions
-from app.api.v1.endpoints import agents, heartbeat, files, notifications, approvals, audit, daily_logs, telegram_webhook
+from app.api.v1.endpoints import agents, heartbeat, files, notifications, approvals, audit, daily_logs, telegram_webhook, mercadolibre
 
 api_router = APIRouter()
 
@@ -19,3 +19,4 @@ api_router.include_router(approvals.router, prefix="/approvals", tags=["Approval
 api_router.include_router(audit.router, prefix="/audit-logs", tags=["Audit"])
 api_router.include_router(daily_logs.router, prefix="/daily-logs", tags=["DailyLogs"])
 api_router.include_router(telegram_webhook.router, prefix="/telegram", tags=["Telegram"])
+api_router.include_router(mercadolibre.router, prefix="/mercadolibre", tags=["MercadoLibre"])

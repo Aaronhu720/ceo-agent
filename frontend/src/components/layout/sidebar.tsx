@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   MessageSquare, LayoutDashboard, CheckSquare, FolderKanban,
   GitBranch, Brain, AlertTriangle, Bot,
-  HeartPulse, Bell, LogOut,
+  HeartPulse, Bell, LogOut, Store,
 } from "lucide-react";
 import { useAuth } from "@/stores/auth";
 import { useQuery } from "@tanstack/react-query";
@@ -27,6 +27,12 @@ const navGroups = [
       { href: "/decisions", label: "待决策事项", icon: GitBranch, badgeKey: "decisions" as const },
       { href: "/tasks", label: "任务与项目看板", icon: CheckSquare },
       { href: "/projects", label: "项目管理", icon: FolderKanban },
+    ],
+  },
+  {
+    label: "渠道管理",
+    items: [
+      { href: "/mercadolibre", label: "Mercado Libre", icon: Store },
     ],
   },
   {
