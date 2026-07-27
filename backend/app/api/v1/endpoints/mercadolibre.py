@@ -148,7 +148,7 @@ async def get_auth_url(
         raise HTTPException(400, "App ID not configured")
 
     if cbt:
-        auth_base = "https://auth.mercadolibre.com"
+        auth_base = "https://global-selling.mercadolibre.com"
     else:
         auth_base = f"https://auth.mercadolibre.com.{_get_auth_domain(account.site_id)}"
 
