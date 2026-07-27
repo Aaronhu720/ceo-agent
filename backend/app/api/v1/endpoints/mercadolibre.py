@@ -143,6 +143,10 @@ async def get_auth_url(
     current_user: User = Depends(get_current_user),
 ):
     """Generate OAuth authorization URL for this account."""
+    import secrets
+    import hashlib
+    import base64
+
     account = await _get_account(db, account_id, current_user.organization_id)
     if not account.app_id:
         raise HTTPException(400, "App ID not configured")
@@ -152,11 +156,21 @@ async def get_auth_url(
     else:
         auth_base = f"https://auth.mercadolibre.com.{_get_auth_domain(account.site_id)}"
 
+    code_verifier = secrets.token_urlsafe(64)
+    code_challenge = base64.urlsafe_b64encode(
+        hashlib.sha256(code_verifier.encode()).digest()
+    ).rstrip(b"=").decode()
+
+    account.metadata_json = {**(account.metadata_json or {}), "pkce_code_verifier": code_verifier}
+    await db.commit()
+
     auth_url = (
         f"{auth_base}/authorization?response_type=code"
         f"&client_id={account.app_id}"
         f"&redirect_uri={account.redirect_uri}"
         f"&state={account.id}"
+        f"&code_challenge={code_challenge}"
+        f"&code_challenge_method=S256"
     )
     return {"auth_url": auth_url, "site_id": account.site_id}
 
@@ -181,16 +195,21 @@ async def oauth_callback(
     if not account.app_id or not account.app_secret:
         raise HTTPException(400, "App credentials not configured")
 
+    token_body = {
+        "grant_type": "authorization_code",
+        "client_id": account.app_id,
+        "client_secret": account.app_secret,
+        "code": code,
+        "redirect_uri": account.redirect_uri,
+    }
+    code_verifier = (account.metadata_json or {}).get("pkce_code_verifier")
+    if code_verifier:
+        token_body["code_verifier"] = code_verifier
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post(
             "https://api.mercadolibre.com/oauth/token",
-            json={
-                "grant_type": "authorization_code",
-                "client_id": account.app_id,
-                "client_secret": account.app_secret,
-                "code": code,
-                "redirect_uri": account.redirect_uri,
-            },
+            json=token_body,
         )
         if resp.status_code != 200:
             raise HTTPException(400, f"OAuth token exchange failed: {resp.text}")
