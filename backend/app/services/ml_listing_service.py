@@ -13,42 +13,34 @@ ML_API = "https://api.mercadolibre.com"
 
 
 async def search_ml_category(query: str, site_id: str = "MLM") -> list[dict]:
-    """Search ML category tree by keyword."""
+    """Search ML category tree by keyword using domain discovery."""
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(
             f"{ML_API}/sites/{site_id}/domain_discovery/search",
             params={"q": query},
         )
         if resp.status_code == 200:
-            return resp.json()[:5]
-
-        # Fallback to category predictor
-        resp2 = await client.get(
-            f"{ML_API}/sites/{site_id}/category_predictor/predict",
-            params={"title": query},
-        )
-        if resp2.status_code == 200:
-            data = resp2.json()
-            if isinstance(data, list) and data:
-                return [{"category_id": d.get("id"), "category_name": d.get("name")} for d in data[:5]]
-            elif isinstance(data, dict) and data.get("id"):
-                return [{"category_id": data["id"], "category_name": data.get("name", "")}]
+            results = resp.json()
+            if results:
+                return results[:5]
         return []
 
 
 async def predict_category(title: str, site_id: str = "MLM") -> Optional[str]:
-    """Predict the best ML category for a product title."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            f"{ML_API}/sites/{site_id}/category_predictor/predict",
-            params={"title": title},
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            if isinstance(data, dict) and data.get("id"):
-                return data["id"]
-            if isinstance(data, list) and data:
-                return data[0].get("id")
+    """Predict the best ML category for a product title using domain discovery."""
+    # Try domain discovery first (more reliable)
+    results = await search_ml_category(title, site_id)
+    if results:
+        return results[0].get("category_id")
+
+    # Try with individual words if full title fails
+    words = title.split()
+    for i in range(len(words), 0, -1):
+        partial = " ".join(words[:i])
+        results = await search_ml_category(partial, site_id)
+        if results:
+            return results[0].get("category_id")
+
     return None
 
 
