@@ -11,6 +11,7 @@ from app.models.project import Project
 from app.models.decision import Decision
 from app.services.model_gateway import ChatMessage
 from app.services.url_fetcher import extract_urls, fetch_urls_from_text
+from app.services.pim_service import get_product_summary, search_products
 
 
 class ContextBuilder:
@@ -55,6 +56,10 @@ class ContextBuilder:
         if pending_decisions:
             dec_text = "\n".join([f"- {d.title} ({d.decision_status})" for d in pending_decisions[:5]])
             context_parts.append(f"## Pending Decisions\n{dec_text}")
+
+        pim_context = await self._get_pim_context(user_message)
+        if pim_context:
+            context_parts.append(pim_context)
 
         urls = extract_urls(user_message)
         if urls:
@@ -160,3 +165,26 @@ Format:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    _PIM_KEYWORDS = {"产品", "product", "库存", "inventory", "stock", "sku", "pim",
+                     "缺货", "产品线", "品类", "category", "catalog", "商品", "listing"}
+
+    async def _get_pim_context(self, user_message: str) -> str | None:
+        from app.core.config import settings
+        if not settings.PIM_USERNAME:
+            return None
+
+        msg_lower = user_message.lower()
+        is_pim_related = any(kw in msg_lower for kw in self._PIM_KEYWORDS)
+        is_pim_url = "pim.usaaron.com" in msg_lower
+
+        if not is_pim_related and not is_pim_url:
+            return None
+
+        try:
+            summary = await get_product_summary()
+            return summary if summary else None
+        except Exception as e:
+            import structlog
+            structlog.get_logger().warning("PIM context fetch failed", error=str(e))
+            return None

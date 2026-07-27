@@ -57,6 +57,10 @@ class Settings(BaseSettings):
 
     DEFAULT_MODEL_PROVIDER: str = "openai"
 
+    PIM_BASE_URL: str = "https://pim.usaaron.com"
+    PIM_USERNAME: str = ""
+    PIM_PASSWORD: str = ""
+
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_WEBHOOK_URL: str = ""  # e.g. https://ceo.usaaron.com/api/telegram/webhook
     TELEGRAM_ALLOWED_USERS: str = ""  # comma-separated Telegram user IDs for security

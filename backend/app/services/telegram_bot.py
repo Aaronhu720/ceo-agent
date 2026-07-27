@@ -18,6 +18,7 @@ from telegram.ext import (
 from app.core.config import settings
 from app.services.model_gateway import get_model_provider, ChatMessage
 from app.services.url_fetcher import extract_urls, fetch_url_content
+from app.services.pim_service import get_product_summary
 
 logger = structlog.get_logger()
 
@@ -227,6 +228,26 @@ async def _build_telegram_context(user_id: int) -> list[ChatMessage]:
     return messages
 
 
+_PIM_KEYWORDS = {"产品", "product", "库存", "inventory", "stock", "sku", "pim",
+                 "缺货", "产品线", "品类", "category", "商品", "listing"}
+
+
+async def _maybe_add_pim_context(messages: list[ChatMessage], user_text: str):
+    """Add PIM product data to context if the message is product-related."""
+    if not settings.PIM_USERNAME:
+        return
+    msg_lower = user_text.lower()
+    if not any(kw in msg_lower for kw in _PIM_KEYWORDS) and "pim.usaaron.com" not in msg_lower:
+        return
+    try:
+        summary = await get_product_summary()
+        if summary:
+            messages.append(ChatMessage(role="system", content=summary))
+            logger.info("PIM context added to Telegram")
+    except Exception as e:
+        logger.warning("PIM context failed for Telegram", error=str(e))
+
+
 async def _send_reply_with_voice(update: Update, reply: str):
     """Send reply as both text and voice. Always sends text first, then voice audio."""
     if len(reply) <= 4096:
@@ -274,6 +295,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         logger.info("Building Telegram context...")
         messages = await _build_telegram_context(user_id)
+        await _maybe_add_pim_context(messages, user_text)
 
         final_content = user_text
         if url_contents:
