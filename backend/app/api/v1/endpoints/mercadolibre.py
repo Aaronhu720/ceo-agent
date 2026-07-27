@@ -138,6 +138,7 @@ async def delete_account(
 @router.get("/accounts/{account_id}/auth-url")
 async def get_auth_url(
     account_id: UUID,
+    cbt: bool = Query(False, description="CBT cross-border seller account"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -146,10 +147,13 @@ async def get_auth_url(
     if not account.app_id:
         raise HTTPException(400, "App ID not configured")
 
-    site = ML_SITES.get(account.site_id, {})
+    if cbt:
+        auth_base = "https://auth.mercadolibre.com"
+    else:
+        auth_base = f"https://auth.mercadolibre.com.{_get_auth_domain(account.site_id)}"
+
     auth_url = (
-        f"https://auth.mercadolibre.com.{_get_auth_domain(account.site_id)}"
-        f"/authorization?response_type=code"
+        f"{auth_base}/authorization?response_type=code"
         f"&client_id={account.app_id}"
         f"&redirect_uri={account.redirect_uri}"
         f"&state={account.id}"
