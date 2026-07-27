@@ -317,6 +317,32 @@ async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f"图片处理失败: {str(e)}")
 
 
+async def _text_to_speech(text: str) -> BytesIO | None:
+    """Convert text to speech using OpenAI TTS API. Returns OGG audio BytesIO."""
+    import httpx
+    if len(text) > 4096:
+        text = text[:4096]
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{settings.OPENAI_BASE_URL}/audio/speech",
+            headers={
+                "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "tts-1",
+                "input": text,
+                "voice": "nova",
+                "response_format": "opus",
+            },
+        )
+        resp.raise_for_status()
+        buf = BytesIO(resp.content)
+        buf.name = "reply.ogg"
+        logger.info("TTS audio generated", size=len(resp.content))
+        return buf
+
+
 async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle voice messages: download OGG, transcribe with Whisper, then process as text."""
     import traceback
@@ -374,14 +400,25 @@ async def handle_voice_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
         await _save_chat_message(user_id, "assistant", reply)
 
-        if len(reply) <= 4096:
-            await update.message.reply_text(reply)
-        else:
-            chunks = [reply[i:i + 4000] for i in range(0, len(reply), 4000)]
-            for chunk in chunks:
-                await update.message.reply_text(chunk)
+        await update.message.chat.send_action("record_voice")
+        voice_sent = False
+        try:
+            voice_buf = await _text_to_speech(reply)
+            if voice_buf:
+                await update.message.reply_voice(voice=voice_buf, caption=reply[:1024] if len(reply) > 200 else None)
+                voice_sent = True
+        except Exception as tts_err:
+            logger.warning("TTS failed, falling back to text", error=str(tts_err))
 
-        logger.info("Voice message processed and replied")
+        if not voice_sent:
+            if len(reply) <= 4096:
+                await update.message.reply_text(reply)
+            else:
+                chunks = [reply[i:i + 4000] for i in range(0, len(reply), 4000)]
+                for chunk in chunks:
+                    await update.message.reply_text(chunk)
+
+        logger.info("Voice message processed and replied", voice_reply=voice_sent)
 
     except Exception as e:
         logger.error("Telegram voice handler failed", error=str(e), traceback=traceback.format_exc())
