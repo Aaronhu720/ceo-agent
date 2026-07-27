@@ -185,6 +185,7 @@ async def generate_ml_listing_data(
         "condition": "new",
         "attributes": attributes,
         "seller_custom_field": sku,
+        "channels": ["marketplace"],
     }
 
     # Spanish description
