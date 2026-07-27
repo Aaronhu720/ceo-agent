@@ -22,7 +22,19 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Storage bucket check failed (MinIO may not be ready)", error=str(e))
 
+    from app.services.telegram_bot import setup_webhook, shutdown_webhook
+    try:
+        await setup_webhook()
+    except Exception as e:
+        logger.warning("Telegram bot setup failed", error=str(e))
+
     yield
+
+    try:
+        await shutdown_webhook()
+    except Exception as e:
+        logger.warning("Telegram bot shutdown failed", error=str(e))
+
     logger.info("Shutting down CEO Agent API")
 
 

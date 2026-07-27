@@ -57,6 +57,10 @@ class Settings(BaseSettings):
 
     DEFAULT_MODEL_PROVIDER: str = "openai"
 
+    TELEGRAM_BOT_TOKEN: str = ""
+    TELEGRAM_WEBHOOK_URL: str = ""  # e.g. https://ceo.usaaron.com/api/telegram/webhook
+    TELEGRAM_ALLOWED_USERS: str = ""  # comma-separated Telegram user IDs for security
+
     CELERY_BROKER_URL: str = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
 

@@ -24,3 +24,4 @@ tenacity==9.0.0
 python-dateutil==2.9.0
 pytz==2024.2
 structlog==24.4.0
+python-telegram-bot[webhooks]==21.10
