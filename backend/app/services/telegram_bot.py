@@ -225,7 +225,9 @@ async def _build_telegram_context(user_id: int) -> list[ChatMessage]:
 
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    import traceback
     if not update.message or not update.effective_user or not update.message.text:
+        logger.warning("Telegram text handler: missing message/user/text")
         return
     if not is_authorized(update.effective_user.id):
         await update.message.reply_text("⛔ 未授权，请联系管理员。")
@@ -233,21 +235,24 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     user_id = update.effective_user.id
     user_text = update.message.text
+    logger.info("Telegram text message", user_id=user_id, text=user_text[:50])
 
     await update.message.chat.send_action("typing")
     await _save_chat_message(user_id, "user", user_text)
 
     try:
+        logger.info("Building Telegram context...")
         messages = await _build_telegram_context(user_id)
         messages.append(ChatMessage(role="user", content=user_text))
+        logger.info("Calling OpenAI...", message_count=len(messages))
 
         provider = get_model_provider("openai")
         response = await provider.chat(messages, model="gpt-4o", temperature=0.7, max_tokens=2000)
         reply = response.content
+        logger.info("OpenAI response received", length=len(reply))
 
         await _save_chat_message(user_id, "assistant", reply)
 
-        # Split long messages (Telegram has 4096 char limit)
         if len(reply) <= 4096:
             await update.message.reply_text(reply)
         else:
@@ -255,9 +260,14 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             for chunk in chunks:
                 await update.message.reply_text(chunk)
 
+        logger.info("Telegram reply sent")
+
     except Exception as e:
-        logger.error("Telegram text handler failed", error=str(e))
-        await update.message.reply_text(f"处理失败: {str(e)}")
+        logger.error("Telegram text handler failed", error=str(e), traceback=traceback.format_exc())
+        try:
+            await update.message.reply_text(f"处理失败: {str(e)}")
+        except Exception:
+            pass
 
 
 async def handle_photo_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -355,8 +365,16 @@ async def shutdown_webhook():
 
 
 async def process_update(update_data: dict):
+    import traceback
     global _bot_app
     if not _bot_app:
+        logger.warning("Telegram bot app not initialized")
         return
-    update = Update.de_json(update_data, _bot_app.bot)
-    await _bot_app.process_update(update)
+    try:
+        update = Update.de_json(update_data, _bot_app.bot)
+        logger.info("Processing Telegram update", update_id=update.update_id,
+                     has_message=bool(update.message),
+                     text=update.message.text[:50] if update.message and update.message.text else None)
+        await _bot_app.process_update(update)
+    except Exception as e:
+        logger.error("Telegram process_update error", error=str(e), traceback=traceback.format_exc())

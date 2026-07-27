@@ -1,3 +1,4 @@
+import traceback
 from fastapi import APIRouter, Request
 import structlog
 
@@ -12,8 +13,10 @@ async def telegram_webhook(request: Request):
 
     try:
         data = await request.json()
+        logger.info("Telegram webhook data received", keys=list(data.keys()))
         await process_update(data)
+        logger.info("Telegram webhook processed successfully")
     except Exception as e:
-        logger.error("Telegram webhook error", error=str(e))
+        logger.error("Telegram webhook error", error=str(e), traceback=traceback.format_exc())
 
     return {"ok": True}
