@@ -166,25 +166,23 @@ Format:
         )
         return list(result.scalars().all())
 
-    _PIM_KEYWORDS = {"产品", "product", "库存", "inventory", "stock", "sku", "pim",
-                     "缺货", "产品线", "品类", "category", "catalog", "商品", "listing"}
-
     async def _get_pim_context(self, user_message: str) -> str | None:
+        """Always load PIM product data as business context."""
+        import structlog
+        logger = structlog.get_logger()
         from app.core.config import settings
         if not settings.PIM_USERNAME:
-            return None
-
-        msg_lower = user_message.lower()
-        is_pim_related = any(kw in msg_lower for kw in self._PIM_KEYWORDS)
-        is_pim_url = "pim.usaaron.com" in msg_lower
-
-        if not is_pim_related and not is_pim_url:
+            logger.debug("PIM skipped: no username configured")
             return None
 
         try:
+            logger.info("Fetching PIM product summary...")
             summary = await get_product_summary()
+            if summary:
+                logger.info("PIM context loaded", length=len(summary))
+            else:
+                logger.warning("PIM returned empty summary")
             return summary if summary else None
         except Exception as e:
-            import structlog
-            structlog.get_logger().warning("PIM context fetch failed", error=str(e))
+            logger.error("PIM context fetch failed", error=str(e))
             return None
