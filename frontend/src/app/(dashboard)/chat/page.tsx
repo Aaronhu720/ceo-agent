@@ -536,8 +536,8 @@ export default function ChatPage() {
             {proposedTasks.length > 0 && (
               <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-sm">
                 <p className="font-medium text-blue-700 dark:text-blue-400 mb-1">提取的任务:</p>
-                {proposedTasks.map((t, i) => (
-                  <p key={i} className="text-blue-600 dark:text-blue-300">• {t}</p>
+                {proposedTasks.map((t: any, i) => (
+                  <p key={i} className="text-blue-600 dark:text-blue-300">• {typeof t === "string" ? t : t?.title || JSON.stringify(t)}</p>
                 ))}
               </div>
             )}
@@ -545,8 +545,8 @@ export default function ChatPage() {
             {proposedMemories.length > 0 && (
               <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-sm">
                 <p className="font-medium text-purple-700 dark:text-purple-400 mb-1">建议保存的记忆:</p>
-                {proposedMemories.map((m, i) => (
-                  <p key={i} className="text-purple-600 dark:text-purple-300">• {m}</p>
+                {proposedMemories.map((m: any, i) => (
+                  <p key={i} className="text-purple-600 dark:text-purple-300">• {typeof m === "string" ? m : m?.content || JSON.stringify(m)}</p>
                 ))}
               </div>
             )}
