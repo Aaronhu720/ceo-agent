@@ -32,7 +32,15 @@ const navGroups = [
   {
     label: "渠道管理",
     items: [
+      { href: "/amazon", label: "Amazon", icon: Store },
+      { href: "/ebay", label: "eBay", icon: Store },
+      { href: "/walmart", label: "Walmart", icon: Store },
+      { href: "/wayfair", label: "Wayfair", icon: Store },
       { href: "/mercadolibre", label: "Mercado Libre", icon: Store },
+      { href: "/temu", label: "Temu", icon: Store },
+      { href: "/shein", label: "SHEIN", icon: Store },
+      { href: "/cdiscount", label: "Cdiscount", icon: Store },
+      { href: "/otto", label: "OTTO", icon: Store },
     ],
   },
   {

@@ -14,6 +14,7 @@ from app.models.approval import Approval
 from app.models.file import File
 from app.models.audit_log import AuditLog
 from app.models.mercadolibre import MLAccount, MLListing
+from app.models.marketplace import MarketplaceAccount, MarketplaceListing
 
 __all__ = [
     "Organization", "User", "Role",
@@ -26,4 +27,5 @@ __all__ = [
     "DailyLog", "Notification", "Approval",
     "File", "AuditLog",
     "MLAccount", "MLListing",
+    "MarketplaceAccount", "MarketplaceListing",
 ]
