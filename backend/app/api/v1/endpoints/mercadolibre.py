@@ -287,6 +287,162 @@ async def create_listing(
     return _serialize_listing(listing)
 
 
+# --- Publish from PIM ---
+
+class PublishRequest(BaseModel):
+    account_id: str
+    pim_sku: str
+    price: float | None = None
+    currency: str = "MXN"
+    title_override: str | None = None
+    image_urls: list[str] | None = None
+
+
+@router.post("/publish-from-pim")
+async def publish_from_pim(
+    body: PublishRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch product from PIM, generate ML listing, and publish."""
+    from app.services.pim_service import get_products
+    from app.services.ml_listing_service import generate_ml_listing_data, publish_to_ml, add_images_to_item
+
+    account = await _get_account(db, UUID(body.account_id), current_user.organization_id)
+    if account.status != "connected" or not account.access_token:
+        raise HTTPException(400, "Account not connected or token missing")
+
+    # Refresh token if expired
+    await _refresh_if_needed(db, account)
+
+    # Find product in PIM
+    pim_data = await get_products(limit=50, search=body.pim_sku)
+    items = pim_data.get("items", [])
+    product = next((p for p in items if p.get("sku") == body.pim_sku), None)
+    if not product:
+        raise HTTPException(404, f"Product {body.pim_sku} not found in PIM")
+
+    # Generate ML listing data
+    listing_data = await generate_ml_listing_data(
+        product=product,
+        access_token=account.access_token,
+        site_id=account.site_id,
+        price_override=body.price,
+        currency=body.currency,
+    )
+
+    if body.title_override:
+        listing_data["title"] = body.title_override[:60]
+
+    # Add images if provided
+    if body.image_urls:
+        from app.services.ml_listing_service import upload_image_to_ml
+        pictures = []
+        for url in body.image_urls:
+            pic_id = await upload_image_to_ml(url, account.access_token)
+            if pic_id:
+                pictures.append({"id": pic_id})
+        if pictures:
+            listing_data["pictures"] = pictures
+
+    # Publish to ML
+    result = await publish_to_ml(listing_data, account.access_token)
+
+    if result.get("success"):
+        # Save to local DB
+        listing = MLListing(
+            organization_id=current_user.organization_id,
+            account_id=account.id,
+            ml_item_id=result["item_id"],
+            pim_sku=body.pim_sku,
+            title=result.get("title", listing_data.get("title", "")),
+            price=result.get("price"),
+            currency_id=body.currency,
+            available_quantity=listing_data.get("available_quantity", 1),
+            listing_type=listing_data.get("listing_type_id", "gold_special"),
+            condition="new",
+            permalink=result.get("permalink", ""),
+            ml_status=result.get("status", "active"),
+            sync_status="synced",
+            category_id=listing_data.get("category_id"),
+        )
+        db.add(listing)
+        await db.commit()
+        await db.refresh(listing)
+
+    return result
+
+
+@router.post("/preview-listing")
+async def preview_listing(
+    body: PublishRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Preview what the ML listing would look like without publishing."""
+    from app.services.pim_service import get_products
+    from app.services.ml_listing_service import generate_ml_listing_data, get_category_attributes
+
+    account = await _get_account(db, UUID(body.account_id), current_user.organization_id)
+
+    pim_data = await get_products(limit=50, search=body.pim_sku)
+    items = pim_data.get("items", [])
+    product = next((p for p in items if p.get("sku") == body.pim_sku), None)
+    if not product:
+        raise HTTPException(404, f"Product {body.pim_sku} not found in PIM")
+
+    listing_data = await generate_ml_listing_data(
+        product=product,
+        access_token=account.access_token or "",
+        site_id=account.site_id,
+        price_override=body.price,
+        currency=body.currency,
+    )
+
+    if body.title_override:
+        listing_data["title"] = body.title_override[:60]
+
+    # Get category info
+    cat_attrs = []
+    if listing_data.get("category_id"):
+        cat_attrs = await get_category_attributes(listing_data["category_id"])
+
+    return {
+        "listing_data": listing_data,
+        "pim_product": product,
+        "category_attributes": [
+            {"id": a.get("id"), "name": a.get("name"), "required": a.get("tags", {}).get("required", False)}
+            for a in cat_attrs[:20]
+        ],
+    }
+
+
+@router.post("/listings/{item_id}/add-images")
+async def add_listing_images(
+    item_id: str,
+    image_urls: list[str],
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add images to an existing ML listing."""
+    from app.services.ml_listing_service import add_images_to_item
+
+    result = await db.execute(
+        select(MLListing).where(
+            MLListing.ml_item_id == item_id,
+            MLListing.organization_id == current_user.organization_id,
+        )
+    )
+    listing = result.scalars().first()
+    if not listing:
+        raise HTTPException(404, "Listing not found")
+
+    account = await _get_account(db, listing.account_id, current_user.organization_id)
+    await _refresh_if_needed(db, account)
+
+    return await add_images_to_item(item_id, image_urls, account.access_token)
+
+
 # --- Stats ---
 
 @router.get("/stats")
@@ -361,6 +517,40 @@ async def ml_status_notification(request: Request):
 
 
 # --- Helpers ---
+
+async def _refresh_if_needed(db: AsyncSession, account: MLAccount):
+    """Refresh access token if expired or about to expire."""
+    from datetime import datetime, timezone, timedelta
+    import httpx
+
+    if not account.refresh_token or not account.token_expires_at:
+        return
+
+    if account.token_expires_at > datetime.now(timezone.utc) + timedelta(minutes=30):
+        return
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                "https://api.mercadolibre.com/oauth/token",
+                json={
+                    "grant_type": "refresh_token",
+                    "client_id": account.app_id,
+                    "client_secret": account.app_secret,
+                    "refresh_token": account.refresh_token,
+                },
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                account.access_token = data.get("access_token")
+                account.refresh_token = data.get("refresh_token", account.refresh_token)
+                expires_in = data.get("expires_in", 21600)
+                account.token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+                await db.commit()
+                logger.info("ML token refreshed for account %s", account.id)
+    except Exception as e:
+        logger.error("Token refresh failed: %s", e)
+
 
 async def _get_account(db: AsyncSession, account_id: UUID, org_id) -> MLAccount:
     result = await db.execute(
