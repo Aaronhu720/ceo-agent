@@ -334,11 +334,16 @@ async def publish_from_pim(
     if body.title_override:
         listing_data["title"] = body.title_override[:60]
 
-    # Add images if provided
-    if body.image_urls:
+    # Collect image URLs: explicit ones first, then PIM originals
+    all_image_urls = list(body.image_urls or [])
+    pim_images = listing_data.pop("_pim_image_urls", [])
+    if not all_image_urls and pim_images:
+        all_image_urls = pim_images
+
+    if all_image_urls:
         from app.services.ml_listing_service import upload_image_to_ml
         pictures = []
-        for url in body.image_urls:
+        for url in all_image_urls[:10]:  # ML allows max 10 images
             pic_id = await upload_image_to_ml(url, account.access_token)
             if pic_id:
                 pictures.append({"id": pic_id})
@@ -401,6 +406,10 @@ async def preview_listing(
 
     if body.title_override:
         listing_data["title"] = body.title_override[:60]
+
+    # Extract PIM image URLs for preview
+    pim_images = listing_data.pop("_pim_image_urls", [])
+    listing_data["pim_images"] = pim_images
 
     # Get category info
     cat_attrs = []

@@ -53,6 +53,42 @@ async def get_category_attributes(category_id: str) -> list[dict]:
         return []
 
 
+# English -> Spanish translation map for common product terms
+ES_TRANSLATIONS = {
+    # Categories
+    "kitchen": "Cocina", "stove": "Estufa", "grill": "Parrilla", "burner": "Quemador",
+    "oven": "Horno", "spatula": "Espátula", "pan": "Sartén", "pot": "Olla",
+    "cookware": "Utensilios de Cocina", "utensil": "Utensilio", "knife": "Cuchillo",
+    "cutting board": "Tabla de Cortar", "camping": "Campamento", "outdoor": "Exterior",
+    "portable": "Portátil", "foldable": "Plegable", "bbq": "BBQ",
+    "fire pit": "Fogata", "griddle": "Plancha", "smoker": "Ahumador",
+    "thermometer": "Termómetro", "tongs": "Pinzas", "skewer": "Brocheta",
+    "rack": "Rejilla", "cover": "Cubierta", "table": "Mesa",
+    # Materials
+    "stainless steel": "Acero Inoxidable", "cast iron": "Hierro Fundido",
+    "aluminum": "Aluminio", "steel": "Acero", "wood": "Madera",
+    "ceramic": "Cerámica", "silicone": "Silicona", "plastic": "Plástico",
+    "copper": "Cobre", "titanium": "Titanio", "iron": "Hierro",
+    # Colors
+    "black": "Negro", "silver": "Plateado", "red": "Rojo", "blue": "Azul",
+    "white": "Blanco", "green": "Verde", "gray": "Gris", "brown": "Marrón",
+    # Properties
+    "professional": "Profesional", "heavy duty": "Resistente", "premium": "Premium",
+    "large": "Grande", "small": "Pequeño", "set": "Juego",
+}
+
+
+def _to_spanish(text: str) -> str:
+    """Translate common English product terms to Spanish."""
+    if not text:
+        return text
+    result = text
+    for en, es in sorted(ES_TRANSLATIONS.items(), key=lambda x: -len(x[0])):
+        result = result.replace(en.title(), es).replace(en.lower(), es.lower()).replace(en.upper(), es.upper())
+    # Capitalize first letter of each word
+    return " ".join(w.capitalize() if len(w) > 2 else w for w in result.split())
+
+
 async def generate_ml_listing_data(
     product: dict,
     access_token: str,
@@ -62,6 +98,7 @@ async def generate_ml_listing_data(
 ) -> dict:
     """Build a ML listing payload from PIM product data.
 
+    Generates Spanish-language titles and descriptions.
     Returns a dict ready to POST to /items.
     """
     sku = product.get("sku", "")
@@ -79,22 +116,31 @@ async def generate_ml_listing_data(
     search_parts = [p for p in [category, sub_category, brand] if p]
     search_query = " ".join(search_parts) if search_parts else sku
 
-    # Generate title (ML max 60 chars)
+    # Generate Spanish title (ML max 60 chars, keyword-rich)
     title_parts = []
-    if brand and brand != "Dr Camp":
-        title_parts.append(brand)
     if sub_category:
-        title_parts.append(sub_category)
+        title_parts.append(_to_spanish(sub_category))
     elif category:
-        title_parts.append(category)
+        title_parts.append(_to_spanish(category))
     if material and material.lower() not in ("needs review", "n/a"):
-        title_parts.append(material)
+        title_parts.append(_to_spanish(material))
+    if brand:
+        title_parts.append(brand)
     if color and color.lower() not in ("needs review", "n/a"):
-        title_parts.append(color)
+        title_parts.append(_to_spanish(color))
+    # Add keyword boosters if there's room
+    if category.lower() in ("kitchen",) and "cocina" not in " ".join(title_parts).lower():
+        title_parts.append("Cocina")
+    if any(w in category.lower() for w in ("outdoor", "camping", "grill", "stove")):
+        if "exterior" not in " ".join(title_parts).lower() and "campamento" not in " ".join(title_parts).lower():
+            title_parts.append("Exterior")
 
     title = " ".join(title_parts)
     if not title:
         title = sku
+    # Trim to 60 chars at word boundary
+    if len(title) > 60:
+        title = title[:57].rsplit(" ", 1)[0] + "..."
 
     # Predict ML category
     ml_category_id = await predict_category(search_query, site_id)
@@ -111,7 +157,6 @@ async def generate_ml_listing_data(
         attributes.append({"id": "MATERIAL", "value_name": material})
     if color and color.lower() not in ("needs review", "n/a"):
         attributes.append({"id": "COLOR", "value_name": color})
-    # CBT items are always new
     attributes.append({"id": "ITEM_CONDITION", "value_name": "Nuevo"})
 
     # Price
@@ -121,11 +166,11 @@ async def generate_ml_listing_data(
         if selling_price:
             price = float(selling_price)
             if currency == "MXN":
-                price = round(price * 18.5, 2)  # Rough USD->MXN
+                price = round(price * 18.5, 2)
         else:
             cost = product.get("costUsd")
             if cost:
-                price = round(float(cost) * 3.5, 2)  # 3.5x markup
+                price = round(float(cost) * 3.5, 2)
                 if currency == "MXN":
                     price = round(price * 18.5, 2)
 
@@ -142,16 +187,16 @@ async def generate_ml_listing_data(
         "seller_custom_field": sku,
     }
 
-    # Add description
+    # Spanish description
     desc_parts = []
     if sub_category:
-        desc_parts.append(sub_category)
+        desc_parts.append(f"**{_to_spanish(sub_category)}**")
     if brand:
         desc_parts.append(f"Marca: {brand}")
     if material and material.lower() not in ("needs review", "n/a"):
-        desc_parts.append(f"Material: {material}")
+        desc_parts.append(f"Material: {_to_spanish(material)}")
     if color and color.lower() not in ("needs review", "n/a"):
-        desc_parts.append(f"Color: {color}")
+        desc_parts.append(f"Color: {_to_spanish(color)}")
 
     dimensions = []
     if product.get("productLengthCm"):
@@ -165,10 +210,21 @@ async def generate_ml_listing_data(
     if dimensions:
         desc_parts.append("Dimensiones: " + ", ".join(dimensions))
 
-    desc_parts.append("Envío internacional desde Estados Unidos")
-    desc_parts.append(f"SKU: {sku}")
+    desc_parts.append("")
+    desc_parts.append("✅ Producto nuevo y de alta calidad")
+    desc_parts.append("✅ Envío internacional desde Estados Unidos")
+    desc_parts.append("✅ Garantía de satisfacción")
+    desc_parts.append(f"\nSKU: {sku}")
 
     listing_data["_description"] = "\n".join(desc_parts)
+
+    # Fetch original images from PIM
+    product_id = product.get("id")
+    if product_id:
+        from app.services.pim_service import get_product_images
+        images = await get_product_images(product_id)
+        if images:
+            listing_data["_pim_image_urls"] = [img["original_url"] for img in images]
 
     return listing_data
 

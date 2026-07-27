@@ -159,6 +159,27 @@ async def get_product_summary() -> str:
         return ""
 
 
+async def get_product_images(product_id: int) -> list[dict]:
+    """Get original image URLs for a product from PIM media system."""
+    try:
+        data = await _trpc_query("media.getExportUrls", {"productId": product_id})
+        if isinstance(data, list):
+            return [
+                {
+                    "id": img.get("id"),
+                    "asset_type": img.get("assetType"),
+                    "original_url": img.get("originalUrl"),
+                    "filename": img.get("originalFilename"),
+                }
+                for img in data
+                if img.get("originalUrl")
+            ]
+        return []
+    except Exception as e:
+        logger.warning("Failed to get product images", product_id=product_id, error=str(e))
+        return []
+
+
 async def search_products(query: str) -> str:
     """Search products and return formatted results."""
     try:
